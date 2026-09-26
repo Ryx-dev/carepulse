@@ -1,6 +1,8 @@
 import 'package:carepulse/core/theme.dart';
 import 'package:carepulse/main.dart';
 import 'package:carepulse/screens/home.dart';
+import 'package:carepulse/screens/pages.dart';
+import 'package:carepulse/services/mock_data_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -187,5 +189,197 @@ void main() {
     );
     expect(button.onPressed, isNull);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('completed demo scan becomes latest and first in history', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: const HomeShell(name: 'Demo User', email: 'demo@example.com'),
+      ),
+    );
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Recovery').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, 'After warm-up');
+    await tester.ensureVisible(
+      find.widgetWithText(ElevatedButton, 'Start measurement'),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Start measurement'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    final data = tester.widget<ScanScreen>(find.byType(ScanScreen)).data;
+    expect(data.measurements, hasLength(4));
+    expect(data.stage, ScanStage.requestingScan);
+
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(data.stage, ScanStage.waitingForFinger);
+    await tester.pump(const Duration(seconds: 1));
+    expect(data.stage, ScanStage.scanning);
+    expect(find.text('15 seconds remaining'), findsOneWidget);
+
+    for (var second = 14; second > 0; second--) {
+      await tester.pump(const Duration(seconds: 1));
+      expect(data.secondsRemaining, second);
+    }
+    expect(data.stage, ScanStage.scanning);
+    expect(data.measurements, hasLength(4));
+
+    await tester.pump(const Duration(seconds: 1));
+    expect(data.stage, ScanStage.processing);
+    await tester.pump(const Duration(seconds: 1));
+    expect(data.stage, ScanStage.uploading);
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(data.stage, ScanStage.complete);
+    expect(find.text('Scan complete'), findsOneWidget);
+    expect(
+      find.text('This is a fixed demo result, not a sensor reading.'),
+      findsOneWidget,
+    );
+
+    final completed = data.latest!;
+    expect(data.measurements, hasLength(5));
+    expect(completed.requestId, data.requestId);
+    expect(completed.activity, 'Recovery');
+    expect(completed.note, 'After warm-up');
+    expect(completed.scanDurationSeconds, 15);
+    expect(data.canScan, isTrue);
+
+    await tester.tap(find.text('Back to home'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView).first, const Offset(0, 600));
+    await tester.pumpAndSettle();
+    expect(find.text('Latest measurement'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(Card).at(1),
+        matching: find.text('Recovery'),
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('History'));
+    await tester.pumpAndSettle();
+    expect(find.text('Measurement history'), findsOneWidget);
+    final historyRows = find.byType(MeasurementRow);
+    expect(historyRows, findsNWidgets(5));
+    expect(
+      tester.widget<MeasurementRow>(historyRows.first).measurement.id,
+      completed.id,
+    );
+    await tester.tap(historyRows.first);
+    await tester.pumpAndSettle();
+    expect(find.text('Measurement details'), findsOneWidget);
+    expect(find.text('Recovery'), findsOneWidget);
+    expect(find.text('After warm-up'), findsOneWidget);
+    expect(find.text('15 seconds'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Other saves custom context separately from its note', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme,
+        home: const HomeShell(name: 'Demo User', email: 'demo@example.com'),
+      ),
+    );
+    final dashboardScroll = find
+        .descendant(
+          of: find.byKey(const ValueKey('dashboard_content')),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.byType(DropdownButtonFormField<String>),
+      180,
+      scrollable: dashboardScroll,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Other').last);
+    await tester.pumpAndSettle();
+    final customField = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == 'Custom context (optional)',
+        )
+        .first;
+    final noteField = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.decoration?.labelText == 'Optional note',
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      customField,
+      150,
+      scrollable: dashboardScroll,
+    );
+    await tester.pumpAndSettle();
+    expect(customField, findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.enterText(customField, 'After a walk');
+    expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(
+      noteField,
+      150,
+      scrollable: dashboardScroll,
+    );
+    await tester.pumpAndSettle();
+    expect(noteField, findsOneWidget);
+    await tester.enterText(noteField, 'Felt rested');
+    expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(
+      find.widgetWithText(ElevatedButton, 'Start measurement'),
+      150,
+      scrollable: dashboardScroll,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Start measurement'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(tester.takeException(), isNull);
+
+    final data = tester.widget<ScanScreen>(find.byType(ScanScreen)).data;
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(seconds: 1));
+    for (
+      var second = 0;
+      second < MockDataService.scanDurationSeconds;
+      second++
+    ) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(tester.takeException(), isNull);
+    expect(data.stage, ScanStage.complete);
+    expect(data.measurements, hasLength(5));
+    expect(data.latest!.activity, 'After a walk');
+    expect(data.latest!.note, 'Felt rested');
+    expect(data.latest!.activity, isNot(data.latest!.note));
   });
 }

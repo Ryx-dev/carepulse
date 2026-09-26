@@ -19,6 +19,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   final data = MockDataService();
+  final customContext = TextEditingController();
   final note = TextEditingController();
   String contextName = 'Resting';
   int tab = 0;
@@ -46,14 +47,16 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     data.removeListener(refresh);
     data.dispose();
+    customContext.dispose();
     note.dispose();
     super.dispose();
   }
 
   void openScan() {
     if (!data.canScan) return;
-    final activity = contextName == 'Other' && note.text.trim().isNotEmpty
-        ? note.text.trim()
+    final activity =
+        contextName == 'Other' && customContext.text.trim().isNotEmpty
+        ? customContext.text.trim()
         : contextName;
     data.startScan(activity: activity, note: note.text);
     Navigator.of(
@@ -343,6 +346,7 @@ class _HomeShellState extends State<HomeShell> {
                     children: [
                       DropdownButtonFormField<String>(
                         initialValue: contextName,
+                        isExpanded: true,
                         decoration: const InputDecoration(
                           labelText: 'Measurement context',
                           labelStyle: TextStyle(color: slate),
@@ -352,7 +356,10 @@ class _HomeShellState extends State<HomeShell> {
                             .map(
                               (value) => DropdownMenuItem(
                                 value: value,
-                                child: Text(value),
+                                child: Text(
+                                  value,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
                             )
                             .toList(),
@@ -360,20 +367,31 @@ class _HomeShellState extends State<HomeShell> {
                             ? (value) => setState(() => contextName = value!)
                             : null,
                       ),
+                      if (contextName == 'Other') ...[
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: customContext,
+                          enabled: data.canScan,
+                          maxLength: 40,
+                          decoration: const InputDecoration(
+                            labelText: 'Custom context (optional)',
+                            labelStyle: TextStyle(color: slate),
+                            floatingLabelStyle: TextStyle(color: slate),
+                            hintText: 'After a walk',
+                            counterStyle: TextStyle(color: slate, fontSize: 11),
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 16),
                       TextField(
                         controller: note,
+                        enabled: data.canScan,
                         maxLength: 100,
-                        decoration: InputDecoration(
-                          labelText: contextName == 'Other'
-                              ? 'Custom context or note'
-                              : 'Optional note',
-                          labelStyle: const TextStyle(color: slate),
-                          floatingLabelStyle: const TextStyle(color: slate),
-                          counterStyle: const TextStyle(
-                            color: slate,
-                            fontSize: 11,
-                          ),
+                        decoration: const InputDecoration(
+                          labelText: 'Optional note',
+                          labelStyle: TextStyle(color: slate),
+                          floatingLabelStyle: TextStyle(color: slate),
+                          counterStyle: TextStyle(color: slate, fontSize: 11),
                           hintText: 'Morning measurement',
                         ),
                       ),
@@ -402,9 +420,13 @@ class _HomeShellState extends State<HomeShell> {
                                     ),
                                   ),
                                   SizedBox(width: 8),
-                                  Text(
-                                    'In progress...',
-                                    style: TextStyle(fontSize: 14),
+                                  Flexible(
+                                    child: Text(
+                                      'In progress...',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 14),
+                                    ),
                                   ),
                                 ],
                               )

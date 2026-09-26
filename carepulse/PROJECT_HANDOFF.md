@@ -1,6 +1,6 @@
 # CarePulse project handoff
 
-**Status checked:** September 26, 2026  
+**Status checked:** September 27, 2026  
 **Application root:** `carepulse/` (the directory containing `pubspec.yaml`)  
 **Planning document:** `../CAREPULSE_CODEX.md`
 
@@ -26,20 +26,20 @@ The older `../CAREPULSE_CODEX.md` records product decisions, proposed Firebase s
 | Login and registration | Demo UI implemented | `lib/screens/auth.dart`; valid form submission navigates locally after a 500 ms delay |
 | Account persistence/authentication | Not implemented | No Firebase packages or auth service; any valid demo credentials enter the app |
 | Main navigation | Implemented | `lib/screens/home.dart`; Home, History, Device, Profile tabs |
-| Dashboard | Implemented with sample readings | Device card, latest measurement, context/note fields, scan button, recent measurements |
+| Dashboard | Implemented with sample readings | Device card, latest measurement, context/custom context/note fields, scan button, recent measurements |
 | Scan | Simulated | `lib/services/mock_data_service.dart`; timer driven states and fixed 78 BPM / 98% SpO2 result |
 | History and details | Implemented for in-memory sample data | `lib/screens/pages.dart`; newest item first and tappable detail page |
 | Device status | Simulated | `lib/screens/pages.dart`; seeded online/ready/MAX30102 status, no live connection |
 | Profile/sign out | Demo UI implemented | `lib/screens/profile.dart`, `lib/screens/home.dart`; local name/email and navigation to login |
 | Firebase / ESP32 / sensor | Not implemented in repository | No Firebase dependencies/configuration or firmware files found |
-| Automated tests | Seven widget tests pass | `test/widget_test.dart`; `flutter test` passed on September 26, 2026 |
+| Automated tests | Nine widget tests pass | `test/widget_test.dart`; `flutter test` and `flutter analyze` passed on September 27, 2026 |
 
 ## How the app currently works
 
 1. `main.dart` launches `CarePulseApp`, a Material 3 app that starts at `LoginScreen`.
 2. Login validates email and a nonempty password. Registration validates name, email, password length, and confirmation. Both only simulate an account transition; no account is created or checked. Forgot password shows a demo placeholder message.
 3. `HomeShell` creates one `MockDataService` for that signed in demo session. This service initially has one mock online device and four dated sample measurements. Its data lives only in memory and resets when the shell is recreated or the app restarts.
-4. Home shows the latest item, device state, two recent rows, a context dropdown, a note field with a 100 character limit, and **Start measurement**. A demo label appears in the UI.
+4. Home shows the latest item, device state, two recent rows, a context dropdown, an optional note with a 100 character limit, and **Start measurement**. Selecting `Other` reveals a separate optional custom context field with a 40 character limit; leaving it blank saves the activity as `Other`. A demo label appears in the UI.
 5. Pressing Start generates a timestamp based request ID and moves the mock service through requesting scan, waiting for finger, scanning, processing, uploading, and complete. The scanning stage counts down from 15 seconds. The new measurement always uses 78 BPM and 98% SpO2, then appears first in the dashboard and history.
 6. The scan button is disabled while the simulated scan is active. A scan continues if the scan page is closed because the service belongs to `HomeShell`.
 7. History lists the in-memory measurements in current list order. Tapping one opens details with BPM, SpO2, context, note, date/time, scan duration, and device ID.
@@ -68,7 +68,7 @@ The repository contains standard Flutter generated platform scaffolding for Andr
 
 ## Progress against the planned phases
 
-- **Phase 1, Flutter UI with mock data:** Substantially implemented. Login, registration, dashboard, scan progress, history, details, device, and profile screens exist. The demo data is labeled in key screens. Empty history/latest views are coded, though no normal UI path empties the seeded history.
+- **Phase 1, Flutter UI with mock data:** Complete as a UI demo. Login, registration, dashboard, scan progress, history, details, device, and profile screens were opened on an Android emulator. The demo data is labeled in key screens. A widget test and an emulator run verified the complete simulated scan through its result, latest measurement, history, and details. Empty history/latest views are coded, though no normal UI path empties the seeded history.
 - **Phase 2, navigation and local models:** Partly implemented. Model classes, mock service, reusable theme/formatting/widgets, and navigation exist. There is no repository abstraction or persistent local store. Most navigation is direct `MaterialPageRoute` or tab switching.
 - **Phase 3, Firebase setup:** Not started in code. No `firebase_core`, `firebase_auth`, `firebase_database`, `firebase_options.dart`, or platform Firebase configuration was found.
 - **Phase 4, real authentication:** Not started. Current login/register/sign out are demo navigation only.
@@ -80,7 +80,7 @@ The repository contains standard Flutter generated platform scaffolding for Andr
 - **Demo credentials are not secure accounts.** The password is only validated locally. The displayed email/name are transient. Password reset is a placeholder.
 - **Mock readings are fixed.** Every successful simulated scan produces the same BPM and SpO2. Do not treat seeded or new mock records as patient data.
 - **No persistence or cross-device sync.** Measurements and device state reset with the demo session.
-- **Context `Other` reuses the note field.** If a note is present, the app currently stores that same text as both activity and note. If it is blank, activity remains `Other`. Decide whether custom context and note should be separate before defining the backend schema.
+- **Context `Other` is separate from the note.** The optional custom context becomes the saved activity when entered; otherwise the activity remains `Other`. The optional note is stored independently. Confirm this contract before defining the backend schema.
 - **Scan duration is a constant in the mock service.** It is 15 seconds; it is not yet externally configurable.
 - **Request IDs are locally generated only.** There is no remote acknowledgment, duplicate request handling, timeout, retry, or result matching.
 - **Status freshness is absent.** `lastSeen` is seeded to a fixed date and updated by the mock stage transitions. There is no heartbeat or online timeout.
@@ -98,13 +98,20 @@ flutter test
 flutter analyze
 ```
 
-On September 26, 2026, `flutter test` completed with **7 passing widget tests**. These cover demo login/loading/sign out, field validation, forgot password copy, auth link behavior, a small phone login, tab navigation at phone width, and wide dashboard/scan locking. They do not test a full 15-second result flow, persistence, Firebase, or hardware. `flutter analyze` produced no output after an extended wait and was stopped, so its result remains **unverified**. No physical device or release build was verified for this handoff.
+On September 27, 2026, `flutter test` completed with **9 passing widget tests**. These cover demo login/loading/sign out, field validation, forgot password copy, auth link behavior, a small phone login, tab navigation at phone width, wide dashboard/scan locking, a complete simulated 15-second scan through latest/history/details, and distinct custom context and note values on a 320 px phone layout. `flutter analyze` completed with **no issues found**. A debug build ran on a Pixel 9 Pro Android 17 emulator: Login, Register, Dashboard, Scan, History, Details, Device, and Profile rendered, and a 15-second mock scan updated Latest and History with separate custom context and note values visible in Details. No physical device, Firebase, ESP32, sensor, or release build was verified.
 
 ## Recommended next agent task
 
-Finish the UI demo and its contract before replacing the mock service: review the `Other` context/note behavior, verify all key screens and the complete scan result on a device or emulator, and resolve any analyzer findings. Then implement Firebase in small steps: project configuration, real authentication, device/measurement repositories, scan command and state protocol, and only then ESP32 firmware. Keep the mock service available for deterministic UI development until the live path is proven.
+Next, work through Phase 2: tighten navigation and local models, and decide whether the invalid, error, offline, and empty states need demo controls or targeted widget tests. Keep the mock service available for deterministic UI development. Later Firebase work should proceed in small steps: project configuration, real authentication, device/measurement repositories, scan command and state protocol, and only then ESP32 firmware.
 
 For Firebase integration, agree on ownership and access rules for the planned `users/{uid}/devices/...` and `users/{uid}/measurements/...` paths, a stable request/result ID contract, server timestamps, disconnect/heartbeat handling, timeout and error behavior, and scan deduplication. Do not invent credentials or publish secrets. Keep medical language neutral and distinguish demonstration data from real measurements.
+
+## September 27, 2026 update
+
+- `lib/screens/home.dart`: separated the optional custom context for `Other` from the optional note, constrained the context dropdown on small screens, and prevented the in-progress button label from overflowing.
+- `test/widget_test.dart`: added a complete simulated scan test and a narrow-screen test that confirms custom context and note are saved independently.
+- Verification: `flutter test` passed 9 tests; `flutter analyze` reported no issues; a Pixel 9 Pro Android 17 emulator ran the debug app and completed the mock scan through latest, history, and details.
+- Physical device, Firebase, ESP32, sensor, and release behavior: not verified.
 
 ## Handoff checklist for future updates
 
