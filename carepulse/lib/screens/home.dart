@@ -8,21 +8,28 @@ import 'auth.dart';
 import 'pages.dart';
 import 'profile.dart';
 
+/// Displays one demo session using data owned by its parent.
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.name, required this.email});
+  const HomeShell({
+    super.key,
+    required this.name,
+    required this.email,
+    required this.data,
+  });
   final String name;
   final String email;
+  final MockDataService data;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
-  final data = MockDataService();
   final customContext = TextEditingController();
   final note = TextEditingController();
   String contextName = 'Resting';
   int tab = 0;
+  MockDataService get data => widget.data;
 
   bool get scanInProgress => switch (data.stage) {
     ScanStage.requestingScan ||
@@ -39,6 +46,15 @@ class _HomeShellState extends State<HomeShell> {
     data.addListener(refresh);
   }
 
+  @override
+  void didUpdateWidget(HomeShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data != data) {
+      oldWidget.data.removeListener(refresh);
+      data.addListener(refresh);
+    }
+  }
+
   void refresh() {
     if (mounted) setState(() {});
   }
@@ -46,7 +62,6 @@ class _HomeShellState extends State<HomeShell> {
   @override
   void dispose() {
     data.removeListener(refresh);
-    data.dispose();
     customContext.dispose();
     note.dispose();
     super.dispose();

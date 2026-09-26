@@ -1,6 +1,6 @@
 import 'package:carepulse/core/theme.dart';
 import 'package:carepulse/main.dart';
-import 'package:carepulse/screens/home.dart';
+import 'package:carepulse/screens/demo_session.dart';
 import 'package:carepulse/screens/pages.dart';
 import 'package:carepulse/services/mock_data_service.dart';
 import 'package:flutter/material.dart';
@@ -138,7 +138,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: appTheme,
-        home: const HomeShell(name: 'Demo User', email: 'demo@example.com'),
+        home: const DemoSession(name: 'Demo User', email: 'demo@example.com'),
       ),
     );
     expect(tester.takeException(), isNull);
@@ -166,7 +166,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: appTheme,
-        home: const HomeShell(name: 'Demo User', email: 'demo@example.com'),
+        home: const DemoSession(name: 'Demo User', email: 'demo@example.com'),
       ),
     );
     final content = tester.getSize(
@@ -202,7 +202,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: appTheme,
-        home: const HomeShell(name: 'Demo User', email: 'demo@example.com'),
+        home: const DemoSession(name: 'Demo User', email: 'demo@example.com'),
       ),
     );
 
@@ -298,7 +298,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: appTheme,
-        home: const HomeShell(name: 'Demo User', email: 'demo@example.com'),
+        home: const DemoSession(name: 'Demo User', email: 'demo@example.com'),
       ),
     );
     final dashboardScroll = find

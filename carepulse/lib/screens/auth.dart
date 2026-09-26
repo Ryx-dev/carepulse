@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
-import 'home.dart';
-
+import 'demo_session.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -42,7 +41,8 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => loading = false);
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
-        builder: (_) => HomeShell(name: 'Demo User', email: email.text.trim()),
+        builder: (_) =>
+            DemoSession(name: 'Demo User', email: email.text.trim()),
       ),
     );
   }
@@ -193,7 +193,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute<void>(
         builder: (_) =>
-            HomeShell(name: name.text.trim(), email: email.text.trim()),
+            DemoSession(name: name.text.trim(), email: email.text.trim()),
       ),
       (_) => false,
     );
