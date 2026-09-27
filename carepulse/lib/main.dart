@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'core/theme.dart';
-import 'screens/auth.dart';
+import 'screens/splash.dart';
 
 void main() => runApp(const CarePulseApp());
 
@@ -11,6 +11,6 @@ class CarePulseApp extends StatelessWidget {
     title: 'CarePulse',
     debugShowCheckedModeBanner: false,
     theme: appTheme,
-    home: const LoginScreen(),
+    home: const SplashScreen(),
   );
 }

@@ -323,11 +323,12 @@ class AuthLayout extends StatelessWidget {
                       color: coral.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(18),
                     ),
-                    child: const Icon(
-                      Icons.favorite_rounded,
-                      color: primaryRed,
-                      size: 34,
-                      semanticLabel: 'CarePulse heart',
+                    child: const Image(
+                      image: AssetImage(appMarkAsset),
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.contain,
+                      semanticLabel: 'CarePulse logo',
                     ),
                   ),
                 ),

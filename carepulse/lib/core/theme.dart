@@ -8,6 +8,7 @@ const softBorder = Color(0xFFE5EAED);
 const slate = Color(0xFF556E78);
 const deepSlate = Color(0xFF263D48);
 const deviceReady = Color(0xFF2E9A63);
+const appMarkAsset = 'assets/branding/app-mark.png';
 
 final appTheme = ThemeData(
   useMaterial3: true,

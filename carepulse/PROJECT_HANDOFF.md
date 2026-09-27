@@ -6,7 +6,7 @@
 
 ## Read this first
 
-CarePulse is currently a **Flutter UI demo with local mock data**. The intended product is an app controlled ESP32/MAX30102 heart rate and SpO2 measurement and logging system. The app does not yet authenticate users, connect to Firebase, communicate with an ESP32, or read a sensor. The values displayed in the current UI are fixed examples. Do not describe the current app as a working IoT or medical device.
+CarePulse is currently a **Flutter UI demo with local mock data**. The intended product is an app controlled ESP32/MAX30102 heart rate and SpO2 measurement and logging system. A standalone ESP32 hardware prototype sketch now exists in `firmware/`, but the app does not yet authenticate users, connect to Firebase, communicate with an ESP32, or read a sensor. The values displayed in the current UI are fixed examples. Do not describe the current app as a working IoT or medical device.
 
 The older `../CAREPULSE_CODEX.md` records product decisions, proposed Firebase schema, hardware pins, and the intended development order. It is a **plan**, not an implementation report. This file records what the repository actually contains at the date above. If the two differ about progress, use this file and inspect the code.
 
@@ -22,7 +22,7 @@ The older `../CAREPULSE_CODEX.md` records product decisions, proposed Firebase s
 
 | Area | Current state | Evidence |
 | --- | --- | --- |
-| Flutter shell and theme | Implemented | `lib/main.dart`, `lib/core/theme.dart`, bundled Nunito font |
+| Flutter shell, splash, and theme | Implemented | `lib/main.dart`, `lib/screens/splash.dart`, `lib/core/theme.dart`, bundled Nunito font and logo mark |
 | Login and registration | Demo UI implemented | `lib/screens/auth.dart`; valid form submission navigates locally after a 500 ms delay |
 | Account persistence/authentication | Not implemented | No Firebase packages or auth service; any valid demo credentials enter the app |
 | Main navigation | Implemented | `lib/screens/home.dart`; Home, History, Device, Profile tabs |
@@ -31,12 +31,12 @@ The older `../CAREPULSE_CODEX.md` records product decisions, proposed Firebase s
 | History and details | Implemented for in-memory sample data | `lib/screens/pages.dart`; newest item first and tappable detail page |
 | Device status | Simulated | `lib/screens/pages.dart`; seeded online/ready/MAX30102 status, no live connection |
 | Profile/sign out | Demo UI implemented | `lib/screens/profile.dart`, `lib/screens/home.dart`; local name/email and navigation to login |
-| Firebase / ESP32 / sensor | Not implemented in repository | No Firebase dependencies/configuration or firmware files found |
-| Automated tests | Thirteen widget tests pass | `test/widget_test.dart`, `test/phase2_states_test.dart`; `flutter test` and `flutter analyze` passed on September 27, 2026 |
+| Firebase / ESP32 / sensor | Standalone ESP32 sketch added; app integration absent | `firmware/carepulse_esp32/carepulse_esp32.ino`; no Firebase dependencies/configuration |
+| Automated tests | Fourteen widget tests pass | `test/widget_test.dart`, `test/phase2_states_test.dart`; `flutter test` and `flutter analyze` passed on September 27, 2026 |
 
 ## How the app currently works
 
-1. `main.dart` launches `CarePulseApp`, a Material 3 app that starts at `LoginScreen`.
+1. `main.dart` launches `CarePulseApp`, a Material 3 app that shows a 900 ms branded Flutter splash and then replaces it with `LoginScreen`. Android and iOS also have matching native launch resources.
 2. Login validates email and a nonempty password. Registration validates name, email, password length, and confirmation. Both only simulate an account transition; no account is created or checked. Forgot password shows a demo placeholder message.
 3. `DemoSession` creates and owns one `MockDataService` for that signed in demo session, then passes it to `HomeShell`. The service initially has one mock online device and four dated sample measurements. Its data lives only in memory and resets when the session is recreated or the app restarts.
 4. Home shows the latest item, device state, two recent rows, a context dropdown, an optional note with a 100 character limit, and **Start measurement**. Selecting `Other` reveals a separate optional custom context field with a 40 character limit; leaving it blank saves the activity as `Other`. A demo label appears in the UI.
@@ -53,6 +53,7 @@ The `ScanStage` enum also defines invalid, error, and offline states and the sca
 | --- | --- |
 | `lib/main.dart` | App entry point and root `MaterialApp` |
 | `lib/core/theme.dart` | Material theme, colors, input/button/navigation styles |
+| `lib/screens/splash.dart` | Brief branded opening screen and transition to sign-in |
 | `lib/core/formatters.dart` | Simple date and time labels |
 | `lib/models/measurement.dart` | Immutable measurement fields: IDs, BPM, SpO2, activity, note, duration, timestamp |
 | `lib/models/device.dart` | Immutable device fields: ID, name, online flag, state, sensor status, last seen |
@@ -75,7 +76,7 @@ The repository contains standard Flutter generated platform scaffolding for Andr
 - **Phase 3, Firebase setup:** Not started in code. No `firebase_core`, `firebase_auth`, `firebase_database`, `firebase_options.dart`, or platform Firebase configuration was found.
 - **Phase 4, real authentication:** Not started. Current login/register/sign out are demo navigation only.
 - **Phase 5, live Firebase data:** Not started. No remote device state, scan command, measurement read/write, or database security rules are present.
-- **Phase 6, ESP32 firmware:** No firmware, wiring verification, sensor algorithm, LED/buzzer logic, or hardware test artifacts are present in this workspace.
+- **Phase 6, ESP32 firmware:** A standalone Serial-triggered ESP32/MAX30102 prototype sketch and wiring guide are in `firmware/`. No compile, wiring, sensor, Firebase, or physical board verification has been performed.
 
 ## Known gaps and implementation details to watch
 
@@ -100,11 +101,11 @@ flutter test
 flutter analyze
 ```
 
-On September 27, 2026, `flutter test` completed with **13 passing widget tests**. These cover demo login/loading/sign out, field validation, forgot password copy, auth link behavior, a small phone login, tab navigation at phone width, wide dashboard/scan locking, a complete simulated 15-second scan through latest/history/details, distinct custom context and note values on a 320 px phone layout, and empty/offline/invalid/error UI states. `flutter analyze` completed with **no issues found**. Earlier that day, a debug build ran on a Pixel 9 Pro Android 17 emulator: Login, Register, Dashboard, Scan, History, Details, Device, and Profile rendered, and a 15-second mock scan updated Latest and History with separate custom context and note values visible in Details. The later session ownership refactor was verified by tests and analysis, not a new emulator run. No physical device, Firebase, ESP32, sensor, or release build was verified.
+On September 27, 2026, `flutter test` completed with **14 passing widget tests**, including the new splash transition plus the prior demo auth, navigation, scan, and empty/offline/invalid/error states. `flutter analyze` completed with **no issues found**, and `flutter build apk --debug` succeeded with the new launcher and launch resources. An emulator installed and opened the updated app; the logo was visible on Sign in, but repeated Android System UI/Pixel Launcher not responding dialogs prevented a clean visual capture of the brief splash. Earlier that day, a Pixel 9 Pro Android 17 emulator completed the mock scan through Latest, History, and Details before this branding change. No physical device, iOS/macOS build, Firebase, ESP32, sensor, or release build was verified.
 
 ## Recommended next agent task
 
-Next, agree on the data ownership and scan request/result contract before Phase 3 Firebase work. Keep the mock service available for deterministic UI development. Firebase setup, real authentication, device/measurement repositories, the scan command protocol, and ESP32 firmware remain unstarted. The user previously requested no Firebase configuration yet.
+Next, agree on the data ownership and scan request/result contract before Phase 3 Firebase work. Keep the mock service available for deterministic UI development. Firebase setup, real authentication, device/measurement repositories, and the scan command protocol remain unstarted. The ESP32 sketch is a local hardware prototype only. The user previously requested no Firebase configuration yet.
 
 For Firebase integration, agree on ownership and access rules for the planned `users/{uid}/devices/...` and `users/{uid}/measurements/...` paths, a stable request/result ID contract, server timestamps, disconnect/heartbeat handling, timeout and error behavior, and scan deduplication. Do not invent credentials or publish secrets. Keep medical language neutral and distinguish demonstration data from real measurements.
 
@@ -122,6 +123,20 @@ For Firebase integration, agree on ownership and access rules for the planned `u
 - `test/phase2_states_test.dart`: added four widget tests covering empty dashboard/history, offline scan gating/device status, and offline/invalid/error scan guidance.
 - Verification: `flutter test` passed 13 tests and `flutter analyze` reported no issues. No new emulator, physical device, backend, or sensor behavior was verified after this refactor.
 
+## September 27, 2026 branding update
+
+- The supplied `lib/careplus_logo.png` is a wide **CarePlus** wordmark. The app still uses the **CarePulse** name; only the source image's C/plus emblem was used, without changing product copy.
+- `assets/branding/app-mark.png` and `app-icon.png` hold the transparent mark and white square launcher master. `pubspec.yaml` registers the in-app mark. Sign in, registration, and the dashboard header now use it in place of the Material heart.
+- `lib/screens/splash.dart` and `lib/main.dart` add a 900 ms opening screen before sign-in. Android and iOS native launch resources and Android, iOS, web, macOS, and Windows launcher icons now use the mark. Display names on those platforms read CarePulse.
+- `test/widget_test.dart` covers the splash-to-sign-in transition and advances past the splash in existing auth tests.
+- Verification: 14 widget tests passed; `flutter analyze` found no issues; the Android debug APK built and installed. The emulator showed the updated sign-in logo, but its System UI/Pixel Launcher dialogs prevented a clean splash capture. Apple builds and physical device behavior remain unverified.
+
 ## Handoff checklist for future updates
 
 When changing this document, record the date, the concrete files/features changed, which commands passed, and which real device/backend behaviors were verified. Move an item from planned to implemented only after confirming it in code or a running integration. Update `../CAREPULSE_CODEX.md` separately if a product decision changes.
+
+## September 27, 2026 ESP32 prototype update
+
+- Added `firmware/carepulse_esp32/carepulse_esp32.ino` for a Serial-triggered 15 second MAX30102 scan with finger detection, BPM/SpO2 algorithm validation, status LEDs, and buzzer feedback.
+- Added `firmware/README.md` with the intended ESP32 wiring and upload instructions.
+- Verification: source and library API documentation were inspected. Arduino CLI/IDE is not installed in this environment, so the sketch was not compiled or uploaded. No physical wiring, sensor, or app-to-device flow was verified.

@@ -2,13 +2,32 @@ import 'package:carepulse/core/theme.dart';
 import 'package:carepulse/main.dart';
 import 'package:carepulse/screens/demo_session.dart';
 import 'package:carepulse/screens/pages.dart';
+import 'package:carepulse/screens/splash.dart';
 import 'package:carepulse/services/mock_data_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+Future<void> pumpLogin(WidgetTester tester) async {
+  await tester.pumpWidget(const CarePulseApp());
+  await tester.pump(SplashScreen.displayDuration);
+  await tester.pumpAndSettle();
+}
+
 void main() {
-  testWidgets('demo login shows loading and opens dashboard', (tester) async {
+  testWidgets('splash displays the logo before sign in', (tester) async {
     await tester.pumpWidget(const CarePulseApp());
+    expect(find.byType(SplashScreen), findsOneWidget);
+    expect(find.text('CarePulse'), findsOneWidget);
+    expect(find.text('Sign in'), findsNothing);
+
+    await tester.pump(SplashScreen.displayDuration);
+    await tester.pumpAndSettle();
+    expect(find.byType(SplashScreen), findsNothing);
+    expect(find.text('Sign in'), findsNWidgets(2));
+  });
+
+  testWidgets('demo login shows loading and opens dashboard', (tester) async {
+    await pumpLogin(tester);
     expect(find.text('Sign in'), findsNWidgets(2));
     expect(find.text('Enter your email address'), findsNothing);
     expect(find.text('Enter your password'), findsNothing);
@@ -45,7 +64,7 @@ void main() {
   });
 
   testWidgets('validation follows interaction or submission', (tester) async {
-    await tester.pumpWidget(const CarePulseApp());
+    await pumpLogin(tester);
     expect(find.text('Enter your email address'), findsNothing);
     expect(find.text('Enter your password'), findsNothing);
 
@@ -65,7 +84,7 @@ void main() {
   });
 
   testWidgets('forgot password explains the demo placeholder', (tester) async {
-    await tester.pumpWidget(const CarePulseApp());
+    await pumpLogin(tester);
     await tester.tap(find.text('Forgot password?'));
     await tester.pump();
     expect(
@@ -77,7 +96,7 @@ void main() {
   testWidgets('only auth action text is linked and has text-only states', (
     tester,
   ) async {
-    await tester.pumpWidget(const CarePulseApp());
+    await pumpLogin(tester);
 
     final createLink = find.widgetWithText(TextButton, 'Create account');
     expect(createLink, findsOneWidget);
@@ -120,7 +139,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const CarePulseApp());
+    await pumpLogin(tester);
     expect(tester.takeException(), isNull);
     await tester.ensureVisible(find.widgetWithText(ElevatedButton, 'Sign in'));
     await tester.pump();

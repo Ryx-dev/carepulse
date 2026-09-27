@@ -101,7 +101,13 @@ class _HomeShellState extends State<HomeShell> {
       title: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.favorite_rounded, color: primaryRed, size: 24),
+          Image(
+            image: AssetImage(appMarkAsset),
+            width: 28,
+            height: 28,
+            fit: BoxFit.contain,
+            semanticLabel: 'CarePulse logo',
+          ),
           SizedBox(width: 8),
           Flexible(
             child: Text(
