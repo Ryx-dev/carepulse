@@ -6,7 +6,7 @@
 
 ## Read this first
 
-CarePulse is currently a **Flutter UI demo with local mock data**. The intended product is an app controlled ESP32/MAX30102 heart rate and SpO2 measurement and logging system. The Flutter app now initializes Firebase for Android and web, and a standalone ESP32 prototype sketch exists in `firmware/`. The app does not yet authenticate users, read or write live database data, communicate with the ESP32, or read a sensor. The values displayed in the UI are fixed examples. Do not describe the current app as a working IoT or medical device.
+CarePulse is currently a **Flutter UI demo with local mock measurements and device state**. The intended product is an app controlled ESP32/MAX30102 heart rate and SpO2 measurement and logging system. The Flutter app initializes Firebase for Android and web, and Phase 4 calls Firebase Authentication for account actions. A temporary account verified the development Firebase backend and a real Flutter web sign-in, session restore after reload, and sign-out; the account was deleted. A standalone ESP32 prototype sketch exists in `firmware/`. Phase 5 has a read-only Firebase data boundary, but it is not connected to the UI. The app does not read or write live measurement data, communicate with the ESP32, or read a sensor. The values displayed in the UI are fixed examples. Do not describe the current app as a working IoT or medical device.
 
 The older `../CAREPULSE_CODEX.md` records product decisions, proposed Firebase schema, hardware pins, and the intended development order. It is a **plan**, not an implementation report. This file records what the repository actually contains at the date above. If the two differ about progress, use this file and inspect the code.
 
@@ -23,28 +23,29 @@ The older `../CAREPULSE_CODEX.md` records product decisions, proposed Firebase s
 | Area | Current state | Evidence |
 | --- | --- | --- |
 | Flutter shell, splash, and theme | Implemented | `lib/main.dart`, `lib/screens/splash.dart`, `lib/core/theme.dart`, bundled Nunito font and logo mark |
-| Login and registration | Demo UI implemented | `lib/screens/auth.dart`; valid form submission navigates locally after a 500 ms delay |
-| Account persistence/authentication | Not implemented | Firebase Auth package and Email/Password provider are configured, but any valid demo credentials still enter the app |
+| Login and registration | Firebase Auth calls implemented | `lib/screens/auth.dart`, `lib/services/auth_service.dart`; live web sign-in and backend registration verified, UI registration pending |
+| Account persistence/authentication | Firebase Auth state routing implemented | `lib/screens/auth_gate.dart`; a live web session survived reload and sign-out returned to Sign in |
 | Main navigation | Implemented | `lib/screens/home.dart`; Home, History, Device, Profile tabs |
 | Dashboard | Implemented with sample readings | Device card, latest measurement, context/custom context/note fields, scan button, recent measurements |
 | Scan | Simulated | `lib/services/mock_data_service.dart`; timer driven states and fixed 78 BPM / 98% SpO2 result |
 | History and details | Implemented for in-memory sample data | `lib/screens/pages.dart`; newest item first and tappable detail page |
 | Device status | Simulated | `lib/screens/pages.dart`; seeded online/ready/MAX30102 status, no live connection |
-| Profile/sign out | Demo UI implemented | `lib/screens/profile.dart`, `lib/screens/home.dart`; local name/email and navigation to login |
+| Profile/sign out | Firebase user name/email and sign-out action implemented | `lib/screens/profile.dart`, `lib/screens/home.dart`; measurements remain local mock data |
 | Firebase setup | Configured for Android and web | `lib/firebase_options.dart`, `firebase.json`, `database.rules.json`; Singapore Realtime Database denies all reads/writes |
+| Live data boundary | Read-only repository and strict snapshot parser added | `lib/services/firebase_data_repository.dart`, `lib/services/live_data_parser.dart`; not wired to UI or allowed by current rules |
 | ESP32 / sensor | Standalone prototype; app integration absent | `firmware/carepulse_esp32/carepulse_esp32.ino`; no Wi-Fi/Firebase connection |
-| Automated tests | Sixteen widget tests pass | `flutter test` and `flutter analyze` passed on September 28, 2026 |
+| Automated tests | Twenty-two widget and parser tests pass | `flutter test --no-pub` and `flutter analyze --no-pub` passed on September 28, 2026 |
 
 ## How the app currently works
 
-1. `main.dart` initializes Firebase using the generated Android/web options, then launches `CarePulseApp`, a Material 3 app that shows a 900 ms branded Flutter splash and then replaces it with `LoginScreen`. Android and iOS also have matching native launch resources.
-2. Login validates email and a nonempty password. Registration validates name, email, password length, and confirmation. Both only simulate an account transition; no account is created or checked. Forgot password shows a demo placeholder message.
-3. `DemoSession` creates and owns one `MockDataService` for that signed in demo session, then passes it to `HomeShell`. The service initially has one mock online device and four dated sample measurements. Its data lives only in memory and resets when the session is recreated or the app restarts.
+1. `main.dart` initializes Firebase using the generated Android/web options, then launches `CarePulseApp`, a Material 3 app that shows a 900 ms branded Flutter splash and then opens `AuthGate`. The gate observes Firebase user changes and shows Sign in or the signed-in session. Android and iOS also have matching native launch resources.
+2. Login and registration validate inputs and call Firebase Email/Password Authentication. Registration saves the name on the Firebase user profile. Forgot password requests a reset email. Firebase errors display readable messages. Sign-out calls Firebase Auth; the gate returns to Sign in when the auth state changes.
+3. `DemoSession` creates and owns one `MockDataService` for that signed-in account, then passes it to `HomeShell`. The service initially has one mock online device and four dated sample measurements. Its data lives only in memory and resets when the session is recreated or the app restarts.
 4. Home shows the latest item, device state, two recent rows, a context dropdown, an optional note with a 100 character limit, and **Start measurement**. Selecting `Other` reveals a separate optional custom context field with a 40 character limit; leaving it blank saves the activity as `Other`. A demo label appears in the UI.
 5. Pressing Start generates a timestamp based request ID and moves the mock service through requesting scan, waiting for finger, scanning, processing, uploading, and complete. The scanning stage counts down from 15 seconds. The new measurement always uses 78 BPM and 98% SpO2, then appears first in the dashboard and history.
 6. The scan button is disabled while the simulated scan is active. A scan continues if the scan page is closed because the service belongs to `DemoSession`.
 7. History lists the in-memory measurements in current list order. Tapping one opens details with BPM, SpO2, context, note, date/time, scan duration, and device ID.
-8. Device and Profile show demo information. Sign out navigates to login and discards the session's mock data.
+8. Device shows demo information. Profile shows the Firebase account name/email and labels measurement/device data as a demonstration. Sign-out discards the session's mock data.
 
 The `ScanStage` enum also defines invalid, error, and offline states and the scan page has text for them, but the current timer flow does **not** produce those states. The mock device begins online and ready; there is no UI control to simulate a disconnected device or invalid scan.
 
@@ -59,13 +60,16 @@ The `ScanStage` enum also defines invalid, error, and offline states and the sca
 | `lib/models/measurement.dart` | Immutable measurement fields: IDs, BPM, SpO2, activity, note, duration, timestamp |
 | `lib/models/device.dart` | Immutable device fields: ID, name, online flag, state, sensor status, last seen |
 | `lib/services/mock_data_service.dart` | Seed data, `ChangeNotifier`, scan timer, scan gating, in-memory results |
-| `lib/screens/auth.dart` | Login/register UI, validation, local demo transitions |
+| `lib/screens/auth.dart` | Login/register UI, validation, Firebase auth calls and errors |
+| `lib/services/auth_service.dart`, `lib/screens/auth_gate.dart` | Firebase Auth adapter, account stream, and signed-in routing |
+| `lib/services/firebase_data_repository.dart`, `lib/services/live_data_parser.dart` | Read-only live snapshot listeners and model parsing, not yet used by the UI |
 | `lib/screens/demo_session.dart` | Owns and disposes the mock service for a demo session |
 | `lib/screens/home.dart` | Tab shell receiving mock data, dashboard, scan launch, details routing, sign out |
 | `lib/screens/pages.dart` | Shared metric/row widgets; Scan, History, Details, Device screens |
 | `lib/screens/profile.dart` | Demo profile and sign out UI |
 | `test/widget_test.dart` | Widget tests for auth flow, validation, navigation, layouts, and full mock scan |
 | `test/phase2_states_test.dart` | Widget tests for empty, offline, invalid, and error display states |
+| `test/live_data_parser_test.dart` | Valid and malformed Realtime Database snapshot parsing |
 | `firebase.json`, `database.rules.json`, `PHASE3_FIREBASE.md` | Firebase project setup, locked database rules, and proposed live-data contract |
 | `pubspec.yaml` | Flutter and Firebase packages, test/lint packages, Nunito assets |
 
@@ -76,13 +80,13 @@ The repository contains standard Flutter generated platform scaffolding for Andr
 - **Phase 1, Flutter UI with mock data:** Complete as a UI demo. Login, registration, dashboard, scan progress, history, details, device, and profile screens were opened on an Android emulator. The demo data is labeled in key screens. A widget test and an emulator run verified the complete simulated scan through its result, latest measurement, history, and details. Empty history/latest views are coded, though no normal UI path empties the seeded history.
 - **Phase 2, navigation and local models:** Complete for the planned local UI scope. Measurement and device models, a mock service, reusable theme/formatting/widgets, and working routes/tabs exist. `DemoSession` owns the service while `HomeShell` receives it, allowing isolated UI state tests. Routes remain direct `MaterialPageRoute` or tab switching. There is no repository interface or persistent local store; those are still decisions for live data integration.
 - **Phase 3, Firebase setup:** Configured for Android and web in `carepulse-joryx-dev`. Firebase Core initializes at startup. Email/Password Authentication is enabled, and the default Realtime Database is in Singapore with deny-all rules. The UI still uses mock data.
-- **Phase 4, real authentication:** Not started. Current login/register/sign out are demo navigation only.
-- **Phase 5, live Firebase data:** Not started. No remote device state, scan command, or measurement read/write is implemented. The database rules currently deny all client access pending a secure ownership/device contract.
+- **Phase 4, real authentication:** Implemented in code for email/password registration, sign-in, password reset, sign-out, and returning-user routing. Widget tests use a fake auth service. The development Firebase backend accepted a temporary account registration, sign-in, and password-reset request. The Flutter web app signed into that account, restored it after reload, and signed out. The account was deleted. UI registration, reset email delivery, and Android runtime remain unverified.
+- **Phase 5, live Firebase data:** Started with read-only, UID-scoped database listeners and strict measurement/device snapshot parsing. These are not wired to the UI. No remote device state, scan command, or measurement write is operational. The database rules still deny all client access pending a secure ownership/device contract.
 - **Phase 6, ESP32 firmware:** A standalone Serial-triggered ESP32/MAX30102 prototype sketch and wiring guide are in `firmware/`. No compile, wiring, sensor, Firebase, or physical board verification has been performed.
 
 ## Known gaps and implementation details to watch
 
-- **Demo credentials are not secure accounts.** The password is only validated locally. The displayed email/name are transient. Password reset is a placeholder.
+- **Authentication coverage remains partial.** Live web sign-in, reload persistence, and sign-out passed. Flutter UI registration, password reset delivery, error cases against the backend, and Android runtime were not checked.
 - **Mock readings are fixed.** Every successful simulated scan produces the same BPM and SpO2. Do not treat seeded or new mock records as patient data.
 - **No persistence or cross-device sync.** Measurements and device state reset with the demo session.
 - **Context `Other` is separate from the note.** The optional custom context becomes the saved activity when entered; otherwise the activity remains `Other`. The optional note is stored independently. Confirm this contract before defining the backend schema.
@@ -109,7 +113,7 @@ On September 27, 2026, `flutter test` completed with **14 passing widget tests**
 
 ## Recommended next agent task
 
-Next, implement Phase 4 Firebase Authentication while preserving isolated UI tests. The login, registration, password reset, sign-out, and auth-state routing still use demo behavior. Keep the mock service available until Phase 5 live data is proven. The ESP32 sketch is a local hardware prototype only.
+Next, design and test Phase 5 ownership rules and device authorization before enabling database access or firmware writes. Wire the read-only repository to the UI after rules and a real data source are proven. Finish Phase 4 coverage with Flutter UI registration, password reset delivery, and Android runtime testing. Keep the mock service available until live data is proven. The ESP32 sketch is a local hardware prototype only.
 
 For Firebase integration, agree on ownership and access rules for the planned `users/{uid}/devices/...` and `users/{uid}/measurements/...` paths, a stable request/result ID contract, server timestamps, disconnect/heartbeat handling, timeout and error behavior, and scan deduplication. Do not invent credentials or publish secrets. Keep medical language neutral and distinguish demonstration data from real measurements.
 
@@ -158,3 +162,22 @@ When changing this document, record the date, the concrete files/features change
 - Created the default Realtime Database in Singapore (`asia-southeast1`). Its current rules deny all client reads and writes. The proposed account/device/measurement contract is in `PHASE3_FIREBASE.md`; live rules and device identity remain for later phases.
 - Preserved demo login, mock scans, and in-memory history. No real account or measurement data was created or fetched.
 - Verification: 16 widget tests passed with `flutter test`; `flutter analyze` found no issues; web and Android debug builds succeeded. A local browser opened the web build and showed Sign in after Firebase initialization. Android runtime, physical hardware, Apple platforms, and release behavior remain unverified. Flutter reported a future Kotlin plugin compatibility warning during the Android build.
+
+## September 28, 2026 Phase 4 authentication implementation
+
+- Added an injectable Firebase Authentication service, auth-state gate, and account-based session routing. Login, registration, password reset, and sign-out now call Firebase Auth. Registration stores the name in the Firebase user profile. Errors appear in the relevant UI.
+- The signed-in account's session still owns local mock device state and measurements. Firebase Realtime Database rules still deny all reads and writes; no live data integration was added.
+- Updated profile copy and auth widget tests. Nineteen widget tests pass with `flutter test --no-pub`; the final `flutter analyze --no-pub` rerun found no issues.
+- At implementation time, live registration, sign-in, reset email delivery, session persistence, and sign-out against the development Firebase project remained unverified. See the follow-up below for the backend smoke check.
+
+## September 28, 2026 Phase 4 backend smoke check
+
+- Used the [Firebase Auth REST API](https://firebase.google.com/docs/reference/rest/auth) with a temporary QA account in `carepulse-joryx-dev`. Registration returned an account, sign-in returned the same UID, and a password-reset request was accepted. The temporary account was deleted successfully. Credentials and tokens were not saved in the repository.
+- `flutter build web --no-pub` succeeded. A local browser opened the current build, reached Sign in after Firebase initialization, and displayed validation for an invalid email.
+- This did not yet prove a Flutter UI account flow or persisted session at the time of the backend check. See the later web UI check below. Reset email delivery, Android runtime, database access, hardware, and sensor behavior remain unverified.
+
+## September 28, 2026 live web auth and Phase 5 parsing
+
+- With an approved disposable QA account, the current Flutter web build signed in against `carepulse-joryx-dev`, showed the account profile, restored the signed-in dashboard after a browser reload, and returned to Sign in on sign-out. The QA account and temporary credential file were deleted afterward.
+- Added `lib/services/live_data_parser.dart` and `lib/services/firebase_data_repository.dart`. The parser rejects incomplete or malformed successful measurements and sorts valid history newest first. The repository has read-only listeners scoped to `users/{uid}`. Neither is wired to the UI, and current database rules still deny access.
+- `flutter build web --no-pub`, `flutter test --no-pub` (22 tests), and `flutter analyze --no-pub` passed. No Android runtime, device, sensor, database read/write, UI registration, or reset email delivery was verified.

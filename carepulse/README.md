@@ -1,17 +1,18 @@
-# carepulse
+# CarePulse
 
-A new Flutter project.
+CarePulse is a Flutter prototype for an app-controlled ESP32/MAX30102 heart-rate and SpO₂ logger. Android and web are configured for Firebase. The app uses Firebase Authentication for accounts, while all displayed measurements, device status, and scans remain local demonstration data.
 
-## Getting Started
+## Run
 
-This project is a starting point for a Flutter application.
+From this directory:
 
-A few resources to get you started if this is your first Flutter project:
+```powershell
+flutter pub get
+flutter run
+flutter test
+flutter analyze
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Firebase configuration currently supports Android and web. The Realtime Database rules deny all client access until the device and ownership model is implemented.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+See [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for phase status and [PHASE3_FIREBASE.md](PHASE3_FIREBASE.md) for the proposed data contract. The standalone USB Serial firmware prototype is documented in [firmware/README.md](firmware/README.md).

@@ -8,11 +8,13 @@ class ProfileScreen extends StatelessWidget {
     required this.name,
     required this.email,
     required this.onSignOut,
+    this.signingOut = false,
   });
 
   final String name;
   final String email;
   final VoidCallback onSignOut;
+  final bool signingOut;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -25,7 +27,7 @@ class ProfileScreen extends StatelessWidget {
         ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 6),
-      const Text('Your CarePulse demo account', style: TextStyle(color: slate)),
+      const Text('Your CarePulse account', style: TextStyle(color: slate)),
       const SizedBox(height: 18),
       Card(
         child: Padding(
@@ -82,26 +84,26 @@ class ProfileScreen extends StatelessWidget {
             const ListTile(
               leading: Icon(Icons.info_outline_rounded, color: coral),
               title: Text('Account mode'),
-              subtitle: Text('Local demo'),
+              subtitle: Text('Firebase Authentication'),
             ),
           ],
         ),
       ),
       const SizedBox(height: 14),
       const Text(
-        'Account details are shown for this demo session only.',
+        'Measurements and device status are still demonstration data.',
         style: TextStyle(color: slate, fontSize: 12),
       ),
       const SizedBox(height: 24),
       OutlinedButton.icon(
-        onPressed: onSignOut,
+        onPressed: signingOut ? null : onSignOut,
         style: OutlinedButton.styleFrom(
           foregroundColor: primaryRed,
           side: const BorderSide(color: primaryRed),
           minimumSize: const Size.fromHeight(52),
         ),
         icon: const Icon(Icons.logout_rounded),
-        label: const Text('Sign out'),
+        label: Text(signingOut ? 'Signing out...' : 'Sign out'),
       ),
     ],
   );

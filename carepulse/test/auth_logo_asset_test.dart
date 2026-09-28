@@ -2,6 +2,7 @@ import 'package:carepulse/core/theme.dart';
 import 'package:carepulse/screens/auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'fake_auth_service.dart';
 
 Future<void> expectAuthLogoLoads(WidgetTester tester) async {
   final logoFinder = find.byWidgetPredicate(
@@ -26,7 +27,10 @@ Future<void> expectAuthLogoLoads(WidgetTester tester) async {
 void main() {
   testWidgets('sign in logo asset loads', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(theme: appTheme, home: const LoginScreen()),
+      MaterialApp(
+        theme: appTheme,
+        home: LoginScreen(auth: FakeAuthService()),
+      ),
     );
     await tester.pumpAndSettle();
     await expectAuthLogoLoads(tester);
@@ -34,7 +38,10 @@ void main() {
 
   testWidgets('register logo asset loads', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(theme: appTheme, home: const RegisterScreen()),
+      MaterialApp(
+        theme: appTheme,
+        home: RegisterScreen(auth: FakeAuthService()),
+      ),
     );
     await tester.pumpAndSettle();
     await expectAuthLogoLoads(tester);

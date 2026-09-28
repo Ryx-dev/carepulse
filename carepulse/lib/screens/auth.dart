@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
-import 'demo_session.dart';
+import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, required this.auth});
+
+  final AuthService auth;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -35,25 +37,43 @@ class _LoginScreenState extends State<LoginScreen> {
       error = null;
     });
 
-    // TODO: Replace this demo transition with Firebase sign-in in Phase 4.
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-    setState(() => loading = false);
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            DemoSession(name: 'Demo User', email: email.text.trim()),
-      ),
-    );
+    try {
+      await widget.auth.signIn(email.text.trim(), password.text);
+    } catch (failure) {
+      if (mounted) setState(() => error = authErrorMessage(failure));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
 
-  void showForgotPasswordPlaceholder() {
-    // TODO: Connect this action to Firebase password reset in Phase 4.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Password reset is not available in demo mode yet.'),
-      ),
-    );
+  Future<void> resetPassword() async {
+    if (loading) return;
+    final address = email.text.trim();
+    final validation = emailValidator(address);
+    if (validation != null) {
+      setState(() => error = validation);
+      return;
+    }
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      await widget.auth.sendPasswordReset(address);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'If this email has an account, a reset link has been sent.',
+            ),
+          ),
+        );
+      }
+    } catch (failure) {
+      if (mounted) setState(() => error = authErrorMessage(failure));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
 
   @override
@@ -109,7 +129,7 @@ class _LoginScreenState extends State<LoginScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: showForgotPasswordPlaceholder,
+              onPressed: loading ? null : resetPassword,
               child: const Text(
                 'Forgot password?',
                 style: TextStyle(fontWeight: FontWeight.w600),
@@ -146,9 +166,13 @@ class _LoginScreenState extends State<LoginScreen> {
           AuthNavigationLink(
             prompt: "Don't have an account? ",
             action: 'Create account',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(builder: (_) => const RegisterScreen()),
-            ),
+            onPressed: loading
+                ? null
+                : () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => RegisterScreen(auth: widget.auth),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -157,7 +181,9 @@ class _LoginScreenState extends State<LoginScreen> {
 }
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  const RegisterScreen({super.key, required this.auth});
+
+  final AuthService auth;
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
@@ -182,27 +208,30 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> submit() async {
+    if (loading) return;
     if (!formKey.currentState!.validate()) return;
     setState(() {
       loading = true;
       error = null;
     });
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-    setState(() => loading = false);
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            DemoSession(name: name.text.trim(), email: email.text.trim()),
-      ),
-      (_) => false,
-    );
+    try {
+      await widget.auth.register(
+        name.text.trim(),
+        email.text.trim(),
+        password.text,
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (failure) {
+      if (mounted) setState(() => error = authErrorMessage(failure));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) => AuthLayout(
     title: 'Create your account',
-    subtitle: 'Set up a local profile to explore the CarePulse demo.',
+    subtitle: 'Create an account to explore CarePulse.',
     child: Form(
       key: formKey,
       child: Column(
@@ -210,6 +239,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           TextFormField(
             controller: name,
+            enabled: !loading,
             decoration: const InputDecoration(
               labelText: 'Name',
               prefixIcon: Icon(Icons.person_outline_rounded),
@@ -222,6 +252,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 14),
           TextFormField(
             controller: email,
+            enabled: !loading,
             decoration: const InputDecoration(
               labelText: 'Email address',
               prefixIcon: Icon(Icons.mail_outline_rounded),
@@ -232,13 +263,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 14),
           TextFormField(
             controller: password,
+            enabled: !loading,
             obscureText: hidden,
             decoration: InputDecoration(
               labelText: 'Password',
               prefixIcon: const Icon(Icons.lock_outline_rounded),
               suffixIcon: IconButton(
                 tooltip: hidden ? 'Show password' : 'Hide password',
-                onPressed: () => setState(() => hidden = !hidden),
+                onPressed: loading
+                    ? null
+                    : () => setState(() => hidden = !hidden),
                 icon: Icon(
                   hidden
                       ? Icons.visibility_outlined
@@ -253,6 +287,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 14),
           TextFormField(
             controller: confirm,
+            enabled: !loading,
             obscureText: hidden,
             decoration: const InputDecoration(
               labelText: 'Confirm password',
@@ -275,7 +310,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           AuthNavigationLink(
             prompt: 'Already have an account? ',
             action: 'Sign in',
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: loading ? null : () => Navigator.of(context).pop(),
           ),
         ],
       ),
@@ -373,7 +408,7 @@ class AuthNavigationLink extends StatelessWidget {
 
   final String prompt;
   final String action;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) => Wrap(

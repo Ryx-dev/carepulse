@@ -3,10 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/theme.dart';
-import 'auth.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  const SplashScreen({super.key, required this.next});
+
+  final Widget next;
 
   static const displayDuration = Duration(milliseconds: 900);
 
@@ -25,9 +26,9 @@ class _SplashScreenState extends State<SplashScreen> {
 
   void _openLogin() {
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
-    );
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute<void>(builder: (_) => widget.next));
   }
 
   @override

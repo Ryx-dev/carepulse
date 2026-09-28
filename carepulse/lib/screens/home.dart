@@ -4,7 +4,7 @@ import '../core/formatters.dart';
 import '../core/theme.dart';
 import '../models/measurement.dart';
 import '../services/mock_data_service.dart';
-import 'auth.dart';
+import '../services/auth_service.dart';
 import 'pages.dart';
 import 'profile.dart';
 
@@ -15,10 +15,12 @@ class HomeShell extends StatefulWidget {
     required this.name,
     required this.email,
     required this.data,
+    this.onSignOut,
   });
   final String name;
   final String email;
   final MockDataService data;
+  final Future<void> Function()? onSignOut;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -29,6 +31,7 @@ class _HomeShellState extends State<HomeShell> {
   final note = TextEditingController();
   String contextName = 'Resting';
   int tab = 0;
+  bool signingOut = false;
   MockDataService get data => widget.data;
 
   bool get scanInProgress => switch (data.stage) {
@@ -87,11 +90,20 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
-  void signOut() {
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
-      (_) => false,
-    );
+  Future<void> signOut() async {
+    if (signingOut || widget.onSignOut == null) return;
+    setState(() => signingOut = true);
+    try {
+      await widget.onSignOut!();
+    } catch (failure) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(authErrorMessage(failure))));
+      }
+    } finally {
+      if (mounted) setState(() => signingOut = false);
+    }
   }
 
   @override
@@ -153,6 +165,7 @@ class _HomeShellState extends State<HomeShell> {
         name: widget.name,
         email: widget.email,
         onSignOut: signOut,
+        signingOut: signingOut,
       ),
     },
     bottomNavigationBar: NavigationBar(

@@ -3,19 +3,21 @@ import 'package:carepulse/main.dart';
 import 'package:carepulse/screens/demo_session.dart';
 import 'package:carepulse/screens/pages.dart';
 import 'package:carepulse/screens/splash.dart';
+import 'package:carepulse/services/auth_service.dart';
 import 'package:carepulse/services/mock_data_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'fake_auth_service.dart';
 
-Future<void> pumpLogin(WidgetTester tester) async {
-  await tester.pumpWidget(const CarePulseApp());
+Future<void> pumpLogin(WidgetTester tester, [FakeAuthService? auth]) async {
+  await tester.pumpWidget(CarePulseApp(auth: auth ?? FakeAuthService()));
   await tester.pump(SplashScreen.displayDuration);
   await tester.pumpAndSettle();
 }
 
 void main() {
   testWidgets('splash displays the logo before sign in', (tester) async {
-    await tester.pumpWidget(const CarePulseApp());
+    await tester.pumpWidget(CarePulseApp(auth: FakeAuthService()));
     expect(find.byType(SplashScreen), findsOneWidget);
     expect(find.text('CarePulse'), findsOneWidget);
     expect(find.text('Sign in'), findsNothing);
@@ -26,8 +28,27 @@ void main() {
     expect(find.text('Sign in'), findsNWidgets(2));
   });
 
-  testWidgets('demo login shows loading and opens dashboard', (tester) async {
-    await pumpLogin(tester);
+  testWidgets('an existing account opens its session after splash', (
+    tester,
+  ) async {
+    final auth = FakeAuthService()
+      ..emit(
+        const Account(
+          uid: 'returning-user',
+          email: 'returning@example.com',
+          name: 'Returning User',
+        ),
+      );
+    await pumpLogin(tester, auth);
+    expect(find.text('Your overview'), findsOneWidget);
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Returning User'), findsWidgets);
+  });
+
+  testWidgets('sign in shows loading and opens dashboard', (tester) async {
+    final auth = FakeAuthService();
+    await pumpLogin(tester, auth);
     expect(find.text('Sign in'), findsNWidgets(2));
     expect(find.text('Enter your email address'), findsNothing);
     expect(find.text('Enter your password'), findsNothing);
@@ -46,7 +67,7 @@ void main() {
       isNull,
     );
 
-    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 150));
     await tester.pumpAndSettle();
     expect(find.text('Your overview'), findsOneWidget);
     expect(find.text('Home'), findsOneWidget);
@@ -83,14 +104,54 @@ void main() {
     expect(find.text('Enter your email address'), findsOneWidget);
   });
 
-  testWidgets('forgot password explains the demo placeholder', (tester) async {
+  testWidgets('password reset requires an email and confirms request', (
+    tester,
+  ) async {
     await pumpLogin(tester);
     await tester.tap(find.text('Forgot password?'));
     await tester.pump();
-    expect(
-      find.text('Password reset is not available in demo mode yet.'),
-      findsOneWidget,
+    expect(find.text('Enter your email address'), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextFormField).first,
+      'demo@example.com',
     );
+    await tester.tap(find.text('Forgot password?'));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.textContaining('a reset link has been sent'), findsOneWidget);
+  });
+
+  testWidgets('invalid credentials stay on sign in with a useful error', (
+    tester,
+  ) async {
+    final auth = FakeAuthService()..failSignIn = true;
+    await pumpLogin(tester, auth);
+    await tester.enterText(
+      find.byType(TextFormField).first,
+      'demo@example.com',
+    );
+    await tester.enterText(find.byType(TextFormField).last, 'badpassword');
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Sign in'));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(find.text('Email or password is incorrect.'), findsOneWidget);
+    expect(find.text('Your overview'), findsNothing);
+  });
+
+  testWidgets('registration shows the saved account name', (tester) async {
+    await pumpLogin(tester);
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'Alex Rivera');
+    await tester.enterText(fields.at(1), 'alex@example.com');
+    await tester.enterText(fields.at(2), 'password123');
+    await tester.enterText(fields.at(3), 'password123');
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Create account'));
+    await tester.pump(const Duration(milliseconds: 150));
+    await tester.pumpAndSettle();
+    expect(find.text('Your overview'), findsOneWidget);
+    await tester.tap(find.text('Profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Alex Rivera'), findsWidgets);
   });
 
   testWidgets('only auth action text is linked and has text-only states', (
