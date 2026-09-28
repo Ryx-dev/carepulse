@@ -6,6 +6,9 @@ and SpO2 estimate only when the library accepts both values, and drives status
 LEDs and a passive piezo buzzer. It does not connect to Wi-Fi, Firebase, or the
 Flutter app yet. The app still displays mock measurements.
 
+For a step-by-step explanation of the sketch, see
+[`CarePulse_Arduino_Beginner_Guide.pdf`](../output/pdf/CarePulse_Arduino_Beginner_Guide.pdf).
+
 ## Parts and wiring
 
 | Part | Connect to ESP32 | Note |
@@ -37,11 +40,15 @@ I2C pullup directly to the ESP32 pins. No physical scan button is used.
    Invalid contact or algorithm output prints `state=invalid_scan` with a
    reason. A missing/unresponsive sensor prints `state=error`.
 
-The red LED blinks during initialization and stays on for a device error. Two
+The red LED stays on during initialization and for a device error. Two
 short beeps mean a valid estimate, one long beep means an invalid scan, and
 three short beeps mean a device error. Adjust `FINGER_IR_MIN` for the actual
 breakout and finger placement if detection is unreliable. This is a prototype
 estimate for personal logging; it is not a medical diagnostic device.
+
+The scan checks finger contact for the full 15 seconds. The SparkFun algorithm
+calculates from the **latest 100 red/IR pairs** (about 4 seconds at the selected
+sample settings).
 
 The planned app flow will need Firebase authentication, a scan command/result
 contract, database rules, and ESP32 networking before an app tap can trigger

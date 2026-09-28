@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "171387990222",
+    "firebase_url": "https://carepulse-joryx-dev-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "carepulse-joryx-dev",
+    "storage_bucket": "carepulse-joryx-dev.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:171387990222:android:1d321fc5bb3c9c910de09f",
+        "android_client_info": {
+          "package_name": "com.joryx.carepulse"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZFGc3AMUMpR3hnT0RwrI9B-y0CfOJ6r4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

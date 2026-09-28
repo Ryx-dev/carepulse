@@ -1,0 +1,30 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "carepulse-joryx-dev",
+          "appId": "1:171387990222:android:1d321fc5bb3c9c910de09f",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "carepulse-joryx-dev",
+          "configurations": {
+            "android": "1:171387990222:android:1d321fc5bb3c9c910de09f",
+            "web": "1:171387990222:web:ca0bd74953749bf70de09f"
+          }
+        }
+      }
+    }
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "auth": {
+    "providers": {
+      "emailPassword": true
+    }
+  }
+}
