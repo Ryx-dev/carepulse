@@ -13,7 +13,7 @@
         "measurements": {
           ".read": "auth != null && auth.uid === $uid",
           "$requestId": {
-            ".write": "auth != null && auth.uid === $uid && newData.exists()",
+            ".write": "auth != null && auth.uid === $uid && newData.exists() && (!data.exists() || (newData.child('requestId').val() === data.child('requestId').val() && newData.child('deviceId').val() === data.child('deviceId').val() && newData.child('bpm').val() === data.child('bpm').val() && newData.child('spo2').val() === data.child('spo2').val() && newData.child('activity').val() === data.child('activity').val() && newData.child('note').val() === data.child('note').val() && newData.child('scanDuration').val() === data.child('scanDuration').val() && newData.child('timestamp').val() === data.child('timestamp').val()))",
             ".validate": "$requestId.matches(/^[0-9A-F]{8}$/) && newData.hasChildren(['requestId', 'deviceId', 'bpm', 'spo2', 'activity', 'note', 'scanDuration', 'timestamp'])",
             "requestId": { ".validate": "newData.isString() && newData.val() === $requestId" },
             "deviceId": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9:_-]{1,128}$/)" },

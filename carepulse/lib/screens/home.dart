@@ -328,21 +328,30 @@ class _HomeShellState extends State<HomeShell> {
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Icon(Icons.cloud_upload_outlined),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            '${widget.sync!.pendingCount} scan(s) saved on this phone, waiting to upload',
-                          ),
+                        Row(
+                          children: [
+                            const Icon(Icons.cloud_upload_outlined),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '${widget.sync!.pendingCount} scan(s) saved on this phone, waiting to upload',
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: widget.sync!.isSyncing
+                                  ? null
+                                  : () => unawaited(widget.sync!.retry()),
+                              child: const Text('Retry'),
+                            ),
+                          ],
                         ),
-                        TextButton(
-                          onPressed: widget.sync!.isSyncing
-                              ? null
-                              : () => unawaited(widget.sync!.retry()),
-                          child: const Text('Retry'),
-                        ),
+                        if (widget.sync!.failureMessage != null) ...[
+                          const SizedBox(height: 8),
+                          Text(widget.sync!.failureMessage!),
+                        ],
                       ],
                     ),
                   ),

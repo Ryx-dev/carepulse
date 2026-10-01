@@ -52,6 +52,7 @@ void main() {
     await first.enqueue(scan('A1B2C3D4'));
     await first.retry();
     expect(first.pendingCount, 1);
+    expect(first.failureMessage, contains('remains saved on your phone'));
     expect(store.values['alice']!.single.requestId, 'A1B2C3D4');
     first.dispose();
 

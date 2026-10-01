@@ -340,6 +340,8 @@ class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
               icon: const Icon(Icons.sync),
               label: const Text('Retry upload'),
             ),
+            if (widget.sync.failureMessage != null)
+              Text(widget.sync.failureMessage!),
             const SizedBox(height: 12),
           ],
           if (snapshot.hasError)

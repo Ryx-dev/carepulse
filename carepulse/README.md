@@ -1,8 +1,8 @@
 # CarePulse
 
-CarePulse is a Flutter prototype for an app-controlled ESP32/MAX30102 heart-rate and SpO₂ logger. Android and web are configured for Firebase. The app uses Firebase Authentication for accounts, while all displayed measurements, device status, and scans remain local demonstration data.
+CarePulse is a Flutter prototype for an app-controlled ESP32/MAX30102 heart-rate and SpO₂ logger. Android and web are configured for Firebase. The app uses Firebase Authentication for accounts. Signed-in Android sessions can show live BLE scans and account history; the separate demo flow still uses local example data.
 
-The live architecture is **mobile app ↔ ESP32 over BLE** for scans, with the **phone uploading results to Firebase Realtime Database** over its own internet connection. BLE scanning has been verified in a debug APK. Completed scans are saved in encrypted local storage until the authenticated upload succeeds. Previously fetched history is cached for offline viewing, and new offline scans appear as pending measurements. Owner-scoped database rules are deployed to `carepulse-joryx-dev`; phone-to-cloud verification is next. See [ARCHITECTURE_DECISION_BLE.md](ARCHITECTURE_DECISION_BLE.md). Earlier Firebase-to-device and USB gateway code remains an undeployed prototype.
+The live architecture is **mobile app ↔ ESP32 over BLE** for scans, with the **phone uploading results to Firebase Realtime Database** over its own internet connection. BLE scanning has been verified in a debug APK. Completed scans are saved in encrypted local storage until the authenticated upload succeeds. Previously fetched history is cached for offline viewing, and new offline scans appear as pending measurements. Owner-scoped database rules are deployed to `carepulse-joryx-dev`. One saved scan uploaded from an authenticated Android phone after internet returned and appeared in live History; BLE ownership and sensor accuracy still need hardware verification. See [ARCHITECTURE_DECISION_BLE.md](ARCHITECTURE_DECISION_BLE.md). Earlier Firebase-to-device and USB gateway code remains an undeployed prototype.
 
 ## Run
 

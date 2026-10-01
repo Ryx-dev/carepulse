@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/widgets.dart';
 
 import '../models/measurement.dart';
@@ -38,6 +39,24 @@ class BleMeasurementSync extends ChangeNotifier with WidgetsBindingObserver {
   int get pendingCount => _pending.length;
   bool get isSyncing => _syncing != null;
   Object? get lastError => _lastError;
+  String? get failureMessage {
+    final error = _lastError;
+    if (error == null) return null;
+    if (error is TimeoutException) {
+      return 'Upload timed out. Check your internet connection and retry.';
+    }
+    if (error is FirebaseException) {
+      if (error.code == 'permission-denied') {
+        return 'Firebase rejected this scan. Sign in again or contact support.';
+      }
+      return 'Upload failed (${error.code}). Check your connection and retry.';
+    }
+    if (error is StateError &&
+        error.message == 'Sign in to the account that owns this measurement.') {
+      return 'Sign in to the account that owns this scan to upload it.';
+    }
+    return 'Upload failed. This scan remains saved on your phone; retry later.';
+  }
   bool contains(String requestId) =>
       _pending.any((item) => item.requestId == requestId);
 

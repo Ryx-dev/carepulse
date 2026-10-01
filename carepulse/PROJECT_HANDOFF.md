@@ -4,12 +4,11 @@
 **Application root:** `carepulse/` (the directory containing `pubspec.yaml`)  
 **Planning document:** `../CAREPULSE_CODEX.md`
 
-**Architecture update (September 30, 2026):** The user chose BLE for mobile app-to-ESP32 scan control and results, with the phone uploading measurements to Firebase over its own internet connection. The ESP32 will not need Wi-Fi credentials. See `ARCHITECTURE_DECISION_BLE.md`. This decision supersedes the earlier Firebase-to-device scan plan below; no complete BLE app flow exists yet.
-The first BLE transport prototype now exists in the ESP32 sketch, with a matching Dart frame parser, Android/iOS BLE adapter, and parser tests. It is not connected to the Flutter UI, compiled for the board, paired securely, or tested on hardware.
+**Architecture update (September 30, 2026):** The user chose BLE for mobile app-to-ESP32 scan control and results, with the phone uploading measurements to Firebase over its own internet connection. The ESP32 does not need Wi-Fi credentials. See `ARCHITECTURE_DECISION_BLE.md`. This decision supersedes the earlier Firebase-to-device scan plan below. BLE scans are connected to the Android Flutter UI and have produced phone-side readings; device ownership, secure pairing, and sensor accuracy remain unverified.
 
 ## Read this first
 
-CarePulse is currently a **Flutter UI demo with local mock measurements and device state**. The intended product is an app controlled ESP32/MAX30102 heart rate and SpO2 measurement and logging system. The Flutter app initializes Firebase for Android and web, and Phase 4 calls Firebase Authentication for account actions. A temporary account verified the development Firebase backend and a real Flutter web sign-in, session restore after reload, and sign-out; the account was deleted. A standalone ESP32 prototype sketch exists in `firmware/`. Phase 5 has a read-only Firebase data boundary, but it is not connected to the UI. The app does not read or write live measurement data, communicate with the ESP32, or read a sensor. The values displayed in the UI are fixed examples. Do not describe the current app as a working IoT or medical device.
+CarePulse has a **live Android BLE scan and Firebase history flow** alongside a local UI demo. A signed-in Samsung SM-A135F completed scans over BLE, stored a pending result through a period without internet, uploaded it when connectivity returned, and displayed it in account History. Firebase Authentication and owner-scoped measurement rules are active in `carepulse-joryx-dev`. The firmware has not been independently validated for sensor accuracy or secure device ownership. Do not describe CarePulse as a medical device.
 
 The older `../CAREPULSE_CODEX.md` records product decisions, proposed Firebase schema, hardware pins, and the intended development order. It is a **plan**, not an implementation report. This file records what the repository actually contains at the date above. If the two differ about progress, use this file and inspect the code.
 
@@ -29,18 +28,19 @@ The older `../CAREPULSE_CODEX.md` records product decisions, proposed Firebase s
 | Login and registration | Firebase Auth calls implemented | `lib/screens/auth.dart`, `lib/services/auth_service.dart`; live web sign-in and backend registration verified, UI registration pending |
 | Account persistence/authentication | Firebase Auth state routing implemented | `lib/screens/auth_gate.dart`; a live web session survived reload and sign-out returned to Sign in |
 | Main navigation | Implemented | `lib/screens/home.dart`; Home, History, Device, Profile tabs |
-| Dashboard | Implemented with sample readings | Device card, latest measurement, context/custom context/note fields, scan button, recent measurements |
-| Scan | Simulated | `lib/services/mock_data_service.dart`; timer driven states and fixed 78 BPM / 98% SpO2 result |
-| History and details | Implemented for in-memory sample data | `lib/screens/pages.dart`; newest item first and tappable detail page |
-| Device status | Simulated | `lib/screens/pages.dart`; seeded online/ready/MAX30102 status, no live connection |
-| Profile/sign out | Firebase user name/email and sign-out action implemented | `lib/screens/profile.dart`, `lib/screens/home.dart`; measurements remain local mock data |
-| Firebase setup | Configured for Android and web | `lib/firebase_options.dart`, `firebase.json`, `database.rules.json`; Singapore Realtime Database denies all reads/writes |
-| Database access candidate | Owner-only reads tested locally; not deployed | `database.phase5-candidate.rules.json`, `tools/rules/rules.test.cjs`, `PHASE5_ACCESS.md` |
-| Live data boundary | Read-only repository and strict snapshot parser added | `lib/services/firebase_data_repository.dart`, `lib/services/live_data_parser.dart`; not wired to UI or allowed by current rules |
-| ESP32 / sensor | Standalone prototype; app integration absent | `firmware/carepulse_esp32/carepulse_esp32.ino`; no Wi-Fi/Firebase connection |
-| Automated tests | Twenty-two widget and parser tests pass | `flutter test --no-pub` and `flutter analyze --no-pub` passed on September 28, 2026 |
+| Dashboard | Live account readings on signed-in Android; sample readings in demo flow | `lib/screens/home.dart`, `lib/services/mock_data_service.dart` |
+| Scan | BLE device scan in signed-in Android flow; simulated demo scan remains | `lib/screens/live_ble_scan.dart`, `lib/services/ble_device_transport.dart` |
+| History and details | Account history, cached offline history, and pending local scans | `lib/screens/pages.dart`, `lib/services/measurement_history_cache.dart` |
+| Device status | BLE connection during a live scan; demo state remains simulated | `lib/screens/live_ble_scan.dart`, `lib/screens/pages.dart` |
+| Profile/sign out | Firebase account and sign-out implemented | `lib/screens/profile.dart`, `lib/screens/home.dart` |
+| Firebase setup | Android/web Auth and deployed owner-scoped Realtime Database rules | `lib/firebase_options.dart`, `firebase.json`, `database.rules.json` |
+| Live data | Authenticated phone upload and history read verified once on Samsung SM-A135F | `lib/services/ble_measurement_upload.dart`, `lib/services/firebase_data_repository.dart` |
+| ESP32 / sensor | BLE firmware used for phone scans; accuracy and pairing security unverified | `firmware/carepulse_esp32/carepulse_esp32.ino` |
+| Automated tests | Flutter suite, parser, sync, and Firebase rules tests | `test/`, `tools/rules/ble_write.test.cjs` |
 
 ## How the app currently works
+
+The numbered steps below describe the legacy mock/demo path. Signed-in Android users now have a separate BLE scan, secure pending queue, Firebase upload, cached account History, and live dashboard path described above and in the dated updates below.
 
 1. `main.dart` initializes Firebase using the generated Android/web options, then launches `CarePulseApp`, a Material 3 app that shows a 900 ms branded Flutter splash and then opens `AuthGate`. The gate observes Firebase user changes and shows Sign in or the signed-in session. Android and iOS also have matching native launch resources.
 2. Login and registration validate inputs and call Firebase Email/Password Authentication. Registration saves the name on the Firebase user profile. Forgot password requests a reset email. Firebase errors display readable messages. Sign-out calls Firebase Auth; the gate returns to Sign in when the auth state changes.
@@ -224,3 +224,18 @@ When changing this document, record the date, the concrete files/features change
 - Added `MeasurementHistoryCache` using account-scoped secure storage. Dashboard and History show the last fetched cloud measurements after restart without internet, and refresh that copy when Firebase emits a new snapshot.
 - Pending offline scans continue to be stored separately and now appear immediately as the latest dashboard measurement as well as in History. The existing sync service retries uploads on connectivity changes, app resume, and its one-minute timer.
 - The BLE sync and parser tests passed (7 tests). A physical offline/reconnect test and full Flutter analysis remain to be completed.
+
+## October 2, 2026 measurement retry integrity
+
+- Tightened `database.rules.json` so a completed measurement can be written again only with the same field values. This preserves idempotent retries while rejecting changes to an existing scan ID. Added changed BPM and note cases to `tools/rules/ble_write.test.cjs`.
+- `flutter test --no-pub` passed (30 tests). The Firebase emulator could not bind port 9000, so the BLE rules test now uses a separate local emulator configuration on port 19000. It passed, including identical retry, changed BPM and note, cross-account access, malformed records, and deletion. `flutter analyze --no-pub` produced no output and was stopped.
+- With user approval, `firebase deploy --only database --project carepulse-joryx-dev --config firebase.json` succeeded on October 2, 2026. Firebase reported valid syntax and a successful release to `carepulse-joryx-dev-default-rtdb`. No live client write/read was performed after deployment.
+- A connected Samsung SM-A135F has CarePulse 1.0.0 installed, but the phone was on its lock/dream screen during this check. No sign-in state, BLE device, authenticated upload, or history read was verified. Next, perform an authenticated phone upload and history read. Physical BLE pairing and a real sensor scan still need hardware verification.
+
+## October 2, 2026 connected phone upload follow-up
+
+- The unlocked Samsung SM-A135F opened CarePulse in a signed-in session. The dashboard showed one real BLE scan saved locally and still pending upload. It remained pending after a retry cycle; the app did not expose its upload error. An authenticated cloud read or write was not confirmed.
+- Added a short, non-sensitive upload failure message to the dashboard and live history for timeout, Firebase permission, account mismatch, and other failures. `flutter test --no-pub test/ble_measurement_sync_test.dart` passed, Dart analysis of changed files found no issues, and a debug APK built successfully.
+- Installed the updated debug APK with `adb install -r`, preserving app data. The phone screen returned to its lock/dream display before the new diagnostic could be read. The pending scan should remain in secure storage; recheck its message and retry when the phone is unlocked.
+- On the next unlocked check, the app showed `Upload timed out`. The phone could not resolve either `google.com` or the Firebase database host, while Android confirmed CarePulse had internet permission. After the user enabled internet, both names resolved and were reachable. The pending card disappeared automatically, and the same scan appeared at the top of live History alongside four earlier readings. This verifies one real phone-to-Firebase upload and account history read on the Samsung SM-A135F. It does not verify BLE ownership, pairing security, sensor accuracy, or offline/reconnect behavior across a fresh scan.
+- After the phone check, `flutter test --no-pub` passed all 30 tests. The revised top-level handoff and README now reflect the verified live flow.

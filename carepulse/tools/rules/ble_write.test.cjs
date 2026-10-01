@@ -15,7 +15,11 @@ test('BLE measurement writes are owner scoped and validated', async (t) => {
   );
   const env = await initializeTestEnvironment({
     projectId: 'demo-carepulse-ble',
-    database: { host: '127.0.0.1', port: 9000, rules },
+    database: {
+      host: '127.0.0.1',
+      port: 19000,
+      rules,
+    },
   });
   t.after(() => env.cleanup());
 
@@ -33,6 +37,8 @@ test('BLE measurement writes are owner scoped and validated', async (t) => {
   const saved = await assertSucceeds(ref.once('value'));
   assert.equal(saved.child('bpm').val(), 78);
   await assertSucceeds(ref.set(result)); // Retry after an uncertain acknowledgment.
+  await assertFails(ref.set({ ...result, bpm: 79 }));
+  await assertFails(ref.update({ note: 'Changed after upload' }));
   await assertFails(bob.ref('users/alice/measurements/A1B2C3D4').set(result));
   await assertFails(guest.ref('users/alice/measurements/BBBBBBBB').set({
     ...result, requestId: 'BBBBBBBB',
