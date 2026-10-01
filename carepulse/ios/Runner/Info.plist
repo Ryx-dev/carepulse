@@ -5,6 +5,10 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>CarePulse uses Bluetooth to connect to your nearby sensor for scans.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>CarePulse uses Bluetooth to connect to your nearby sensor for scans.</string>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>CarePulse</string>

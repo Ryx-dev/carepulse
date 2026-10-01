@@ -7,6 +7,7 @@ class FakeAuthService implements AuthService {
   final _changes = StreamController<Account?>.broadcast();
   Account? _account;
   bool failSignIn = false;
+  bool failReset = false;
 
   @override
   Account? get currentAccount => _account;
@@ -35,6 +36,7 @@ class FakeAuthService implements AuthService {
   @override
   Future<void> sendPasswordReset(String email) async {
     await Future<void>.delayed(const Duration(milliseconds: 100));
+    if (failReset) throw FirebaseAuthException(code: 'operation-not-allowed');
   }
 
   @override

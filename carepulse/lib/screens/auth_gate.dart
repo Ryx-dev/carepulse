@@ -27,6 +27,7 @@ class AuthGate extends StatelessWidget {
         key: ValueKey(account.uid),
         name: account.displayName,
         email: account.email,
+        uid: auth is FirebaseAuthService ? account.uid : null,
         onSignOut: auth.signOut,
       );
     },

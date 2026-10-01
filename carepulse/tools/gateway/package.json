@@ -1,0 +1,7 @@
+{
+  "name": "carepulse-serial-gateway",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "node --test gateway.test.cjs" },
+  "dependencies": { "serialport": "^13.0.0" }
+}

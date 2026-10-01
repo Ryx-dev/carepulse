@@ -4,6 +4,8 @@ import '../core/theme.dart';
 import '../models/device.dart';
 import '../models/measurement.dart';
 import '../services/mock_data_service.dart';
+import '../services/firebase_data_repository.dart';
+import '../services/ble_measurement_sync.dart';
 
 class MetricTile extends StatelessWidget {
   const MetricTile({
@@ -265,18 +267,136 @@ class HistoryScreen extends StatelessWidget {
   );
 }
 
+class LiveHistoryScreen extends StatefulWidget {
+  const LiveHistoryScreen({
+    super.key,
+    required this.uid,
+    required this.sync,
+    required this.onDetails,
+  });
+  final String uid;
+  final BleMeasurementSync sync;
+  final ValueChanged<Measurement> onDetails;
+
+  @override
+  State<LiveHistoryScreen> createState() => _LiveHistoryScreenState();
+}
+
+class _LiveHistoryScreenState extends State<LiveHistoryScreen> {
+  late Stream<List<Measurement>> measurements;
+
+  @override
+  void initState() {
+    super.initState();
+    measurements = FirebaseDataRepository().watchCachedMeasurements(widget.uid);
+  }
+
+  @override
+  void didUpdateWidget(LiveHistoryScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.uid != widget.uid) {
+      measurements = FirebaseDataRepository().watchCachedMeasurements(
+        widget.uid,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.sync,
+    builder: (context, _) => StreamBuilder<List<Measurement>>(
+      stream: measurements,
+      builder: (context, snapshot) => ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(
+            'Measurement history',
+            style: Theme.of(
+              context,
+            ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Live scans saved to your account',
+            style: TextStyle(color: slate),
+          ),
+          const SizedBox(height: 18),
+          if (widget.sync.pending.isNotEmpty) ...[
+            Text(
+              'Saved on this phone · waiting to upload',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            ...widget.sync.pending.map(
+              (measurement) => MeasurementRow(
+                measurement: measurement,
+                onTap: () => widget.onDetails(measurement),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: widget.sync.isSyncing
+                  ? null
+                  : () => widget.sync.retry(),
+              icon: const Icon(Icons.sync),
+              label: const Text('Retry upload'),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (snapshot.hasError)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text(
+                  'Could not load history. Check your connection and try again.',
+                ),
+              ),
+            )
+          else if (!snapshot.hasData)
+            const Center(child: CircularProgressIndicator())
+          else if (snapshot.data!
+              .where((item) => !widget.sync.contains(item.requestId))
+              .isEmpty)
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Text('No live scans saved yet.'),
+              ),
+            )
+          else
+            ...snapshot.data!
+                .where((item) => !widget.sync.contains(item.requestId))
+                .map(
+                  (measurement) => MeasurementRow(
+                    measurement: measurement,
+                    onTap: () => widget.onDetails(measurement),
+                  ),
+                ),
+        ],
+      ),
+    ),
+  );
+}
+
 class MeasurementDetailsScreen extends StatelessWidget {
-  const MeasurementDetailsScreen({super.key, required this.measurement});
+  const MeasurementDetailsScreen({
+    super.key,
+    required this.measurement,
+    this.demo = true,
+  });
   final Measurement measurement;
+  final bool demo;
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Measurement details')),
     body: ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        const Text(
-          'DEMO DATA',
-          style: TextStyle(color: primaryRed, fontWeight: FontWeight.bold),
+        Text(
+          demo ? 'DEMO DATA' : 'LIVE DEVICE RESULT',
+          style: const TextStyle(
+            color: primaryRed,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         const SizedBox(height: 10),
         Card(
@@ -399,6 +519,48 @@ class DeviceScreen extends StatelessWidget {
       const Text(
         'Status is simulated. No ESP32 or Firebase connection is active.',
         style: TextStyle(color: slate),
+      ),
+    ],
+  );
+}
+
+class LiveDeviceScreen extends StatelessWidget {
+  const LiveDeviceScreen({super.key, required this.onConnect});
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    padding: const EdgeInsets.all(20),
+    children: [
+      Text(
+        'CarePulse device',
+        style: Theme.of(
+          context,
+        ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        'The app connects to your nearby ESP32 over Bluetooth for each scan.',
+        style: TextStyle(color: slate),
+      ),
+      const SizedBox(height: 18),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(Icons.bluetooth_rounded, size: 42, color: primaryRed),
+              const SizedBox(height: 14),
+              const Text('Keep CarePulse powered on and close to your phone.'),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: onConnect,
+                child: const Text('Connect and scan'),
+              ),
+            ],
+          ),
+        ),
       ),
     ],
   );

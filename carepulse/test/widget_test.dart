@@ -117,7 +117,27 @@ void main() {
     );
     await tester.tap(find.text('Forgot password?'));
     await tester.pump(const Duration(milliseconds: 150));
-    expect(find.textContaining('a reset link has been sent'), findsOneWidget);
+    expect(
+      find.textContaining('Request received for demo@example.com'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('inbox and spam folder'), findsOneWidget);
+  });
+
+  testWidgets('password reset shows a disabled-provider error', (tester) async {
+    final auth = FakeAuthService()..failReset = true;
+    await pumpLogin(tester, auth);
+    await tester.enterText(
+      find.byType(TextFormField).first,
+      'demo@example.com',
+    );
+    await tester.tap(find.text('Forgot password?'));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(
+      find.textContaining('Email account access is unavailable'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Request received'), findsNothing);
   });
 
   testWidgets('invalid credentials stay on sign in with a useful error', (
@@ -265,7 +285,7 @@ void main() {
     await tester.pump();
     expect(find.text('In progress...'), findsOneWidget);
     final button = tester.widget<ElevatedButton>(
-      find.byType(ElevatedButton).first,
+      find.widgetWithText(ElevatedButton, 'In progress...'),
     );
     expect(button.onPressed, isNull);
     expect(tester.takeException(), isNull);
@@ -286,6 +306,8 @@ void main() {
       ),
     );
 
+    await tester.drag(find.byType(ListView).first, const Offset(0, -350));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Recovery').last);
@@ -340,7 +362,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView).first, const Offset(0, 600));
     await tester.pumpAndSettle();
-    expect(find.text('Latest measurement'), findsOneWidget);
+    expect(find.text('Latest demo measurement'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(Card).at(1),

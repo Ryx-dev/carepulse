@@ -1,0 +1,14 @@
+{
+  "name": "carepulse-rules-tests",
+  "private": true,
+  "scripts": {
+    "test": "firebase emulators:exec --only database --project demo-carepulse-rules --config ../../firebase.json \"node --test rules.test.cjs\"",
+    "test:scan": "firebase emulators:exec --only database --project demo-carepulse-functions --config ../../firebase.json \"node --test ../../functions/test/start_scan.test.cjs\"",
+    "test:device": "firebase emulators:exec --only database --project demo-carepulse-device --config ../../firebase.json \"node --test ../../functions/test/device_exchange.test.cjs\"",
+    "test:ble-write": "firebase emulators:exec --only database --project demo-carepulse-ble --config ../../firebase.json \"node --test ble_write.test.cjs\""
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase-tools": "^15.31.0"
+  }
+}

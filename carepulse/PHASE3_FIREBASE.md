@@ -40,10 +40,12 @@ users/{uid}/measurements/{requestId}/{requestId,deviceId,bpm,spo2,activity,note,
 
 Keep Realtime Database access locked while the app has demo authentication.
 For live data, a signed-in person should access only their own `users/{uid}`
-tree. The app should write its profile and scan command; the device should write
-its status and validated result. Device identity and its narrow write permission
-must be designed before enabling firmware writes. Do not embed a person's
-password or an unrestricted database credential in the ESP32 firmware.
+tree. The later Phase 5 design in `PHASE5_ACCESS.md` keeps all client writes
+denied and routes scan commands through a trusted callable function. A trusted
+device service must write status and validated results. Device identity and its
+narrow permission must be designed before enabling firmware writes. Do not
+embed a person's password or an unrestricted database credential in the ESP32
+firmware.
 
 ## Configuration status
 

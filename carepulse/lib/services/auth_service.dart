@@ -69,6 +69,8 @@ String authErrorMessage(Object error) {
       'user-not-found' ||
       'invalid-credential' => 'Email or password is incorrect.',
       'too-many-requests' => 'Too many attempts. Try again later.',
+      'operation-not-allowed' =>
+        'Email account access is unavailable right now. Please try again later.',
       'network-request-failed' => 'Check your connection and try again.',
       _ => 'Authentication failed. Please try again.',
     };

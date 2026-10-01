@@ -19,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool hidden = true;
   bool loading = false;
   String? error;
+  String? resetMessage;
 
   @override
   void dispose() {
@@ -35,6 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       loading = true;
       error = null;
+      resetMessage = null;
     });
 
     try {
@@ -57,16 +59,16 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       loading = true;
       error = null;
+      resetMessage = null;
     });
     try {
       await widget.auth.sendPasswordReset(address);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'If this email has an account, a reset link has been sent.',
-            ),
-          ),
+        setState(
+          () => resetMessage =
+              'Request received for $address. If this address has a CarePulse '
+              'account, check its inbox and spam folder for a reset link. '
+              'Delivery may take a few minutes.',
         );
       }
     } catch (failure) {
@@ -136,6 +138,11 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
+          if (resetMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(resetMessage!, style: const TextStyle(color: slate)),
+            ),
           if (error != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),

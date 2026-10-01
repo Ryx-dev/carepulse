@@ -1,13 +1,17 @@
 # CarePulse ESP32 prototype
 
 This sketch tests an **ESP32 Dev Module (classic ESP32)** with a MAX30102 over
-USB Serial. It measures for 15 seconds after detecting a finger, reports a BPM
+USB Serial. It gives each scan up to 10 seconds from the `SCAN` command, reports a BPM
 and SpO2 estimate only when the library accepts both values, and drives status
 LEDs and a passive piezo buzzer. It does not connect to Wi-Fi, Firebase, or the
-Flutter app yet. The app still displays mock measurements.
+Flutter app's demo history. A separate Node USB gateway can relay scan requests
+and results through a server endpoint, but it has not been tried with physical
+hardware. The mobile app has a separate live BLE result screen.
 
 For a step-by-step explanation of the sketch, see
 [`CarePulse_Arduino_Beginner_Guide.pdf`](../output/pdf/CarePulse_Arduino_Beginner_Guide.pdf).
+The guide covers the original manual Serial scan; request ID handling was
+added afterward for the gateway.
 
 ## Parts and wiring
 
@@ -15,8 +19,8 @@ For a step-by-step explanation of the sketch, see
 | --- | --- | --- |
 | MAX30102 `VCC`/`VIN` | `3V3` | Only for a breakout explicitly rated for 3.3 V input. Check the exact board pinout; do not apply 3.3 V to a bare MAX30102 IC. |
 | MAX30102 `GND` | `GND` | Common ground. |
-| MAX30102 `SDA` | `GPIO21` | I2C data. |
-| MAX30102 `SCL` | `GPIO22` | I2C clock. |
+| MAX30102 `SDA` | `GPIO18` | I2C data. |
+| MAX30102 `SCL` | `GPIO19` | I2C clock. |
 | Green LED anode (+) | `GPIO25` through 220–330 ohm resistor | Cathode (-) to GND. |
 | Red LED anode (+) | `GPIO26` through 220–330 ohm resistor | Cathode (-) to GND. |
 | Passive piezo (+) | `GPIO27` | Negative lead to GND. Use a driver transistor for a buzzer that exceeds the GPIO current rating. |
@@ -32,28 +36,62 @@ I2C pullup directly to the ESP32 pins. No physical scan button is used.
    Arduino-ESP32 core 3.x (`ledcAttach`/`ledcWriteTone`).
 2. Open `carepulse_esp32/carepulse_esp32.ino`, choose **ESP32 Dev Module** and
    the correct port, then upload.
-3. Open Serial Monitor at **115200 baud** with newline enabled. On a good
+3. Open Serial Monitor at **9600 baud** with newline enabled. On a good
    connection it prints `state=ready command=SCAN` and the green LED is on.
 4. Place a finger steadily over the sensor. Type `SCAN` and press Enter.
-   Waiting for a finger has a 10 second timeout. The green LED blinks while
+   Waiting for a finger has a 3 second timeout. The green LED blinks while
    waiting/scanning. A valid result prints `state=complete bpm=... spo2=...`.
    Invalid contact or algorithm output prints `state=invalid_scan` with a
    reason. A missing/unresponsive sensor prints `state=error`.
 
 The red LED stays on during initialization and for a device error. Two
 short beeps mean a valid estimate, one long beep means an invalid scan, and
-three short beeps mean a device error. Adjust `FINGER_IR_MIN` for the actual
-breakout and finger placement if detection is unreliable. This is a prototype
+three short beeps mean a device error. `FINGER_IR_MIN` is a calibration value,
+currently 50000, not a verified production threshold. A test saw no-finger
+IR near 850 with occasional increases, so 900 must not be assumed safe.
+Enable `DEBUG_RAW_DATA` to log `WAIT` readings, then record no-finger,
+finger-present, and finger-removed RED/IR ranges on the actual hardware before
+choosing a cutoff. Printing every raw sample at 9600 baud can consume the
+10-second allowance. Keep `DEBUG_RAW_DATA = false` for scan timing tests,
+normal scans, and USB gateway use.
+This is a prototype
 estimate for personal logging; it is not a medical diagnostic device.
 
-The scan checks finger contact for the full 15 seconds. The SparkFun algorithm
-calculates from the **latest 100 red/IR pairs** (about 4 seconds at the selected
-sample settings).
+Finger confirmation must happen within the first 3 seconds. Contact then gets
+1 second to settle. The sketch collects 100 consecutive valid RED/IR pairs and
+finishes as soon as it has them; 10 seconds is the total deadline, including
+finger acquisition and settling. Contact below the threshold for 3 continuous
+seconds ends the scan with `finger_removed`. A shorter loss resets the sample
+buffer and settling period when contact returns. If the deadline arrives before
+100 pairs are collected, the scan ends with `too_few_samples`. `SCAN_SUMMARY`
+reports collection duration, total received samples, valid contact samples,
+`collected_samples` in the current uninterrupted batch, and received samples
+per second. Valid contact samples during settling, or before a contact loss,
+do not count toward the required 100 collected samples. The unchanged SparkFun algorithm uses the
+**100 collected red/IR pairs**.
 
-The planned app flow will need Firebase authentication, a scan command/result
-contract, database rules, and ESP32 networking before an app tap can trigger
-this scan or display its result. No credentials or live readings are embedded
-in this sketch.
+The sketch also accepts `SCAN <requestId>` for the USB gateway. It includes the
+same ID in progress and terminal Serial lines, and refuses the same ID twice
+in one boot. The gateway described in `../PHASE5_ACCESS.md` holds a narrow
+device token on its host computer. No token or Firebase credential is embedded
+in the sketch. App control still needs deployment, physical device testing,
+and live Flutter data wiring.
+
+## BLE transport prototype
+
+The sketch now advertises a `CarePulse` BLE service and accepts the compact
+`S|<8 uppercase hex digits>` command. It sends request-correlated progress and
+terminal notifications through the event characteristic; the UUIDs and frame
+format are in `../ARCHITECTURE_DECISION_BLE.md` and
+`../lib/services/ble_protocol.dart`. Serial control remains available for
+bench testing. The Flutter mobile dashboard now has a separate **Connect and
+scan** flow for discovering the device and displaying BLE results. This
+end-to-end scan flow has been verified on a phone with a debug APK. The app now
+stores completed results on the phone and retries authenticated writes to
+Firebase account history. The database rules are deployed to the development
+project, but phone/cloud synchronization still needs verification. The
+current GATT service has no ownership check, so it is not ready for personal
+measurements or deployment.
 
 ## References
 

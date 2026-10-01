@@ -32,6 +32,17 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+/tools/rules/node_modules/
+/tools/rules/.npm-cache/
+/functions/node_modules/
+/functions/.npm-cache/
+/tools/gateway/node_modules/
+/tools/gateway/.npm-cache/
+/tools/gateway/.env
+/tools/gateway/.env.*
+/functions/.env
+/functions/.env.*
+/.firebase/
 
 # Symbolication related
 app.*.symbols

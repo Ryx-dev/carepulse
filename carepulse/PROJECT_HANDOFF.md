@@ -1,8 +1,11 @@
 # CarePulse project handoff
 
-**Status checked:** September 28, 2026
+**Status checked:** October 2, 2026
 **Application root:** `carepulse/` (the directory containing `pubspec.yaml`)  
 **Planning document:** `../CAREPULSE_CODEX.md`
+
+**Architecture update (September 30, 2026):** The user chose BLE for mobile app-to-ESP32 scan control and results, with the phone uploading measurements to Firebase over its own internet connection. The ESP32 will not need Wi-Fi credentials. See `ARCHITECTURE_DECISION_BLE.md`. This decision supersedes the earlier Firebase-to-device scan plan below; no complete BLE app flow exists yet.
+The first BLE transport prototype now exists in the ESP32 sketch, with a matching Dart frame parser, Android/iOS BLE adapter, and parser tests. It is not connected to the Flutter UI, compiled for the board, paired securely, or tested on hardware.
 
 ## Read this first
 
@@ -32,6 +35,7 @@ The older `../CAREPULSE_CODEX.md` records product decisions, proposed Firebase s
 | Device status | Simulated | `lib/screens/pages.dart`; seeded online/ready/MAX30102 status, no live connection |
 | Profile/sign out | Firebase user name/email and sign-out action implemented | `lib/screens/profile.dart`, `lib/screens/home.dart`; measurements remain local mock data |
 | Firebase setup | Configured for Android and web | `lib/firebase_options.dart`, `firebase.json`, `database.rules.json`; Singapore Realtime Database denies all reads/writes |
+| Database access candidate | Owner-only reads tested locally; not deployed | `database.phase5-candidate.rules.json`, `tools/rules/rules.test.cjs`, `PHASE5_ACCESS.md` |
 | Live data boundary | Read-only repository and strict snapshot parser added | `lib/services/firebase_data_repository.dart`, `lib/services/live_data_parser.dart`; not wired to UI or allowed by current rules |
 | ESP32 / sensor | Standalone prototype; app integration absent | `firmware/carepulse_esp32/carepulse_esp32.ino`; no Wi-Fi/Firebase connection |
 | Automated tests | Twenty-two widget and parser tests pass | `flutter test --no-pub` and `flutter analyze --no-pub` passed on September 28, 2026 |
@@ -71,6 +75,7 @@ The `ScanStage` enum also defines invalid, error, and offline states and the sca
 | `test/phase2_states_test.dart` | Widget tests for empty, offline, invalid, and error display states |
 | `test/live_data_parser_test.dart` | Valid and malformed Realtime Database snapshot parsing |
 | `firebase.json`, `database.rules.json`, `PHASE3_FIREBASE.md` | Firebase project setup, locked database rules, and proposed live-data contract |
+| `database.phase5-candidate.rules.json`, `tools/rules/`, `PHASE5_ACCESS.md` | Undeployed owner-read rules, emulator tests, and proposed trusted scan flow |
 | `pubspec.yaml` | Flutter and Firebase packages, test/lint packages, Nunito assets |
 
 The repository contains standard Flutter generated platform scaffolding for Android, iOS, web, Windows, Linux, and macOS. This does not establish that release builds on each platform have been tested. Firebase is configured only for Android and web. Android now uses `com.joryx.carepulse`; the release build still uses debug signing.
@@ -81,8 +86,8 @@ The repository contains standard Flutter generated platform scaffolding for Andr
 - **Phase 2, navigation and local models:** Complete for the planned local UI scope. Measurement and device models, a mock service, reusable theme/formatting/widgets, and working routes/tabs exist. `DemoSession` owns the service while `HomeShell` receives it, allowing isolated UI state tests. Routes remain direct `MaterialPageRoute` or tab switching. There is no repository interface or persistent local store; those are still decisions for live data integration.
 - **Phase 3, Firebase setup:** Configured for Android and web in `carepulse-joryx-dev`. Firebase Core initializes at startup. Email/Password Authentication is enabled, and the default Realtime Database is in Singapore with deny-all rules. The UI still uses mock data.
 - **Phase 4, real authentication:** Implemented in code for email/password registration, sign-in, password reset, sign-out, and returning-user routing. Widget tests use a fake auth service. The development Firebase backend accepted a temporary account registration, sign-in, and password-reset request. The Flutter web app signed into that account, restored it after reload, and signed out. The account was deleted. UI registration, reset email delivery, and Android runtime remain unverified.
-- **Phase 5, live Firebase data:** Started with read-only, UID-scoped database listeners and strict measurement/device snapshot parsing. These are not wired to the UI. No remote device state, scan command, or measurement write is operational. The database rules still deny all client access pending a secure ownership/device contract.
-- **Phase 6, ESP32 firmware:** A standalone Serial-triggered ESP32/MAX30102 prototype sketch and wiring guide are in `firmware/`. No compile, wiring, sensor, Firebase, or physical board verification has been performed.
+- **Phase 5, live Firebase data:** Read-only UID-scoped listeners, strict parsing, owner-read rules candidate, callable scan request, device credential exchange, provisioning, and an interim USB Serial gateway are implemented and tested locally. All client writes remain denied. Nothing has been deployed or wired to the Flutter UI; no live device or measurement data has been verified.
+- **Phase 6, ESP32 firmware:** The Serial-triggered ESP32/MAX30102 prototype now carries request IDs for the USB gateway. There is no on-device Wi-Fi. No compile, wiring, sensor, Firebase, or physical board verification has been performed.
 
 ## Known gaps and implementation details to watch
 
@@ -113,7 +118,7 @@ On September 27, 2026, `flutter test` completed with **14 passing widget tests**
 
 ## Recommended next agent task
 
-Next, design and test Phase 5 ownership rules and device authorization before enabling database access or firmware writes. Wire the read-only repository to the UI after rules and a real data source are proven. Finish Phase 4 coverage with Flutter UI registration, password reset delivery, and Android runtime testing. Keep the mock service available until live data is proven. The ESP32 sketch is a local hardware prototype only.
+Next, define and implement the BLE request/result protocol, mobile pairing and connection flow, and ESP32 transport; then test a physical ESP32/MAX30102. Add durable phone-side storage and a secure, deduplicated Firebase upload path before connecting live scans to the UI. Keep the mock service available until live data is proven. The USB gateway and Firebase-to-device endpoints are earlier undeployed prototypes. Finish Phase 4 coverage with Flutter UI registration, password reset delivery, and Android runtime testing.
 
 For Firebase integration, agree on ownership and access rules for the planned `users/{uid}/devices/...` and `users/{uid}/measurements/...` paths, a stable request/result ID contract, server timestamps, disconnect/heartbeat handling, timeout and error behavior, and scan deduplication. Do not invent credentials or publish secrets. Keep medical language neutral and distinguish demonstration data from real measurements.
 
@@ -181,3 +186,41 @@ When changing this document, record the date, the concrete files/features change
 - With an approved disposable QA account, the current Flutter web build signed in against `carepulse-joryx-dev`, showed the account profile, restored the signed-in dashboard after a browser reload, and returned to Sign in on sign-out. The QA account and temporary credential file were deleted afterward.
 - Added `lib/services/live_data_parser.dart` and `lib/services/firebase_data_repository.dart`. The parser rejects incomplete or malformed successful measurements and sorts valid history newest first. The repository has read-only listeners scoped to `users/{uid}`. Neither is wired to the UI, and current database rules still deny access.
 - `flutter build web --no-pub`, `flutter test --no-pub` (22 tests), and `flutter analyze --no-pub` passed. No Android runtime, device, sensor, database read/write, UI registration, or reset email delivery was verified.
+
+## September 28, 2026 Phase 5 owner-read candidate
+
+- Added `database.phase5-candidate.rules.json` separately from the deployed `database.rules.json`. It grants authenticated users read access only to their own profile, devices, and measurements. It denies client writes everywhere. `firebase.json` still deploys the original deny-all rules.
+- Added `tools/rules/` with locked Firebase emulator test dependencies and a local rules test. `npm test` passed against `demo-carepulse-rules`: owner reads succeeded; guest, cross-user, parent-path, and unspecified-path reads failed; profile, measurement, command, and parent writes failed.
+- Added `PHASE5_ACCESS.md` describing the candidate boundary and trusted scan request flow. The emulator test did not contact or change the live database.
+
+## September 28, 2026 Phase 5 local scan endpoint
+
+- Added `functions/startScan` as a Firebase callable in `asia-southeast1`, with `CAREPULSE_DATABASE_URL` configuration documented in `PHASE5_ACCESS.md`. It uses the authenticated UID, validates scan input, checks a 60-second device heartbeat and `ready` state, and atomically writes one pending command with a unique request ID. It rejects a concurrent request and leaves client database writes denied.
+- Added a separate emulator integration test in `functions/test/start_scan.test.cjs`. `npm run test:scan` from `tools/rules` passed, including concurrent requests, cross-owner device access, missing authentication, malformed input, stale/future heartbeats, non-ready state, and command completion. The callable module loaded with Firebase SDK dependencies.
+- At this checkpoint, no endpoint or candidate rules were deployed and no device identity or command consumer existed. The next checkpoint below adds a local implementation. A timeout worker, live UI wiring, and real sensor scan are still absent. The function needs `CAREPULSE_DATABASE_URL` at runtime; see `PHASE5_ACCESS.md`.
+
+## September 28, 2026 Phase 5 device exchange and USB bridge
+
+- Added a device-specific token provisioner. A private `deviceBindings/{deviceId}` record holds the owner UID and token hash; the device exchange accepts only that token and derives its user path from the binding. Provisioning was tested in the emulator and was not run against the live project.
+- Added `deviceExchange` HTTP actions for heartbeat, one-time command pickup, and result or failure reporting. It validates request IDs and 15-second result bounds, writes successful measurements under the matching request ID, and handles identical retries. The emulator test passed for credential rejection, owner isolation, command claim, valid results, invalid results, and duplicate reports.
+- Added `tools/gateway/` as an interim Node USB Serial bridge for the current sketch. The sketch now accepts `SCAN <requestId>`, echoes that ID on scan lines, and rejects a repeated ID within one boot. Two simulated gateway tests passed, and the SerialPort binding loaded on this Windows host. Arduino compilation and a physical ESP32/MAX30102 remain unverified.
+- The endpoint, rules candidate, and gateway have not been deployed or run with a real device. The app still uses mock data. A server timeout/offline worker and on-device Wi-Fi transport remain future work; see `PHASE5_ACCESS.md`.
+
+## September 29, 2026 password reset delivery follow-up
+
+- A user reported that an existing account could sign in but its password reset email did not arrive. The app calls Firebase Auth's `sendPasswordResetEmail`; the response confirms request acceptance, not inbox delivery. After the user signed into Firebase Console manually, Authentication > Sign-in method showed Email/Password disabled in `carepulse-joryx-dev`, while Authentication > Templates > SMTP settings showed custom SMTP disabled. The user enabled Email/Password in the console; a refreshed provider page showed its status as Enabled. Custom SMTP remained off.
+- The sign-in screen now shows a persistent confirmation with the exact requested address and inbox/spam guidance, instead of a short snackbar claiming the link was sent. A disabled-provider error also has a specific message. The widget tests passed and `flutter analyze --no-pub` found no issues before the final error-message addition.
+- The user received a reset email, but its action page displayed "The selected page mode is invalid." The link had `mode=resetPassword` but the user reported an empty `apiKey` value. Firebase generates the action link's API key, so the app's current `sendPasswordResetEmail` call cannot fill it. A new reset email after enabling the provider is being checked; the completed password change remains unverified. If a new link still lacks the API key, inspect Firebase Hosting configuration and contact Firebase Support about the backend key mapping.
+
+## October 2, 2026 BLE upload account guard
+
+- `BleMeasurementUpload.save` now requires the UID that owns the local queue and checks it against the current Firebase user before writing. A retry after an account switch therefore leaves the prior account's result pending instead of writing it under the new account.
+- Added `tools/rules/ble_write.test.cjs` to exercise the active BLE measurement rules, including valid owner writes, retry, rejected cross-account writes, malformed records, and deletion.
+- `flutter test --no-pub test/ble_measurement_sync_test.dart` passed (4 tests). The Firebase emulator test could not start in this sandbox because port 9000 could not be opened; it remains unverified. Flutter analysis did not finish in this environment.
+- The next real-world checkpoint remains an authenticated phone-to-Firebase upload and history read, plus physical BLE ownership/pairing validation. No live cloud write or hardware scan was performed in this checkpoint.
+
+## October 2, 2026 offline history display
+
+- Added `MeasurementHistoryCache` using account-scoped secure storage. Dashboard and History show the last fetched cloud measurements after restart without internet, and refresh that copy when Firebase emits a new snapshot.
+- Pending offline scans continue to be stored separately and now appear immediately as the latest dashboard measurement as well as in History. The existing sync service retries uploads on connectivity changes, app resume, and its one-minute timer.
+- The BLE sync and parser tests passed (7 tests). A physical offline/reconnect test and full Flutter analysis remain to be completed.
