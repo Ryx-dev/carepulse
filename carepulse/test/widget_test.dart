@@ -11,24 +11,18 @@ import 'fake_auth_service.dart';
 
 Future<void> pumpLogin(WidgetTester tester, [FakeAuthService? auth]) async {
   await tester.pumpWidget(CarePulseApp(auth: auth ?? FakeAuthService()));
-  await tester.pump(SplashScreen.displayDuration);
   await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('splash displays the logo before sign in', (tester) async {
+  testWidgets('Android opens sign in without a second splash', (tester) async {
     await tester.pumpWidget(CarePulseApp(auth: FakeAuthService()));
-    expect(find.byType(SplashScreen), findsOneWidget);
-    expect(find.text('CarePulse'), findsOneWidget);
-    expect(find.text('Sign in'), findsNothing);
-
-    await tester.pump(SplashScreen.displayDuration);
     await tester.pumpAndSettle();
     expect(find.byType(SplashScreen), findsNothing);
     expect(find.text('Sign in'), findsNWidgets(2));
   });
 
-  testWidgets('an existing account opens its session after splash', (
+  testWidgets('an existing account opens its session at launch', (
     tester,
   ) async {
     final auth = FakeAuthService()

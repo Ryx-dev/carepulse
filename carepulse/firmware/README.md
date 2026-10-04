@@ -77,10 +77,23 @@ device token on its host computer. No token or Firebase credential is embedded
 in the sketch. App control still needs deployment, physical device testing,
 and live Flutter data wiring.
 
-## BLE transport prototype
+## BLE connection and scan transport
 
-The sketch now advertises a `CarePulse` BLE service and accepts the compact
-`S|<8 uppercase hex digits>` command. It sends request-correlated progress and
+The sketch advertises a `CarePulse` BLE service while no phone is connected.
+Select it in the app to connect without entering a code. A short `P` / `T`
+exchange confirms that notifications are ready before scans are enabled. The
+ESP32 accepts scan commands from the connected phone, stops advertising during
+that connection, and advertises again after it disconnects. The app has a
+**Disconnect** action to release the device. A dropped BLE connection also
+releases it.
+
+This is temporary access for the connected phone, not permanent ownership or
+authenticated Bluetooth pairing. Any nearby phone using the CarePulse protocol
+can connect when the device is free. The BLE link and measurement notifications
+are not encrypted by this application protocol. Use the device only where that
+tradeoff is acceptable.
+
+The firmware sends request-correlated progress and
 terminal notifications through the event characteristic; the UUIDs and frame
 format are in `../ARCHITECTURE_DECISION_BLE.md` and
 `../lib/services/ble_protocol.dart`. Serial control remains available for
@@ -89,9 +102,13 @@ scan** flow for discovering the device and displaying BLE results. This
 end-to-end scan flow has been verified on a phone with a debug APK. The app now
 stores completed results on the phone and retries authenticated writes to
 Firebase account history. The database rules are deployed to the development
-project, but phone/cloud synchronization still needs verification. The
-current GATT service has no ownership check, so it is not ready for personal
-measurements or deployment.
+project, and one phone upload and history read succeeded. The tap-to-connect
+change was checked on a Samsung SM-A135F and the ESP32: discovery, connection
+without a code, Disconnect, and reconnection all worked.
+On the previous firmware flash to the connected board, USB Serial reported
+`max30102_not_found`. BLE still starts and can report a sensor error, but the
+MAX30102 power, ground, SDA (GPIO 18), and SCL (GPIO 19) wiring must be checked
+before a new measurement can succeed.
 
 ## References
 

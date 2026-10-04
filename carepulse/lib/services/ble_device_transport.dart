@@ -9,10 +9,10 @@ import 'ble_protocol.dart';
 /// Android/iOS BLE transport. The caller owns the returned subscriptions and
 /// should keep this object alive for the duration of a scan.
 class BleDeviceTransport {
-  BleDeviceTransport({FlutterReactiveBle? ble})
-    : _ble = ble ?? FlutterReactiveBle();
+  BleDeviceTransport({FlutterReactiveBle? ble}) : _providedBle = ble;
 
-  final FlutterReactiveBle _ble;
+  final FlutterReactiveBle? _providedBle;
+  late final FlutterReactiveBle _ble = _providedBle ?? FlutterReactiveBle();
   StreamSubscription<ConnectionStateUpdate>? _connection;
   StreamSubscription<List<int>>? _notifications;
   final StreamController<BleScanEvent> _events = StreamController.broadcast();
@@ -20,11 +20,13 @@ class BleDeviceTransport {
   String? _deviceId;
   String? _activeRequestId;
   bool _connected = false;
+  bool _ready = false;
 
   Stream<BleScanEvent> get events => _events.stream;
   Stream<bool> get connectionStates => _connectionStates.stream;
-  bool get isConnected => _connected;
+  bool get isConnected => _connected && _ready;
   BleStatus get status => _ble.status;
+  Stream<BleStatus> get statusStream => _ble.statusStream;
 
   Stream<DiscoveredDevice> discover() => _ble.scanForDevices(
     withServices: [Uuid.parse(BleProtocol.service)],
@@ -37,6 +39,7 @@ class BleDeviceTransport {
     final command = Uuid.parse(BleProtocol.command);
     final event = Uuid.parse(BleProtocol.events);
     final connected = Completer<void>();
+    Completer<void>? ready;
     _deviceId = deviceId;
     _connection = _ble
         .connectToAdvertisingDevice(
@@ -57,7 +60,11 @@ class BleDeviceTransport {
             } else if (update.connectionState ==
                 DeviceConnectionState.disconnected) {
               _connected = false;
+              _ready = false;
               _connectionStates.add(false);
+              if (ready != null && !ready.isCompleted) {
+                ready.completeError(StateError('BLE device disconnected'));
+              }
               if (!connected.isCompleted) {
                 connected.completeError(StateError('BLE device disconnected'));
               }
@@ -65,12 +72,21 @@ class BleDeviceTransport {
           },
           onError: (Object error) {
             _connected = false;
+            _ready = false;
             _connectionStates.add(false);
+            if (ready != null && !ready.isCompleted) {
+              ready.completeError(error);
+            }
             if (!connected.isCompleted) connected.completeError(error);
           },
         );
     try {
       await connected.future.timeout(const Duration(seconds: 20));
+      final deviceReady = Completer<void>();
+      ready = deviceReady;
+      final readyResult = deviceReady.future.timeout(
+        const Duration(seconds: 8),
+      );
       _notifications = _ble
           .subscribeToCharacteristic(
             QualifiedCharacteristic(
@@ -79,14 +95,34 @@ class BleDeviceTransport {
               deviceId: deviceId,
             ),
           )
-          .listen((bytes) {
-            final parsed = BleProtocol.parseEvent(
-              utf8.decode(bytes, allowMalformed: true),
-            );
-            if (parsed != null && parsed.requestId == _activeRequestId) {
-              _events.add(parsed);
-            }
-          });
+          .listen(
+            (bytes) {
+              if (bytes.length == 1 && bytes.first == 0x54) {
+                _ready = true;
+                if (!deviceReady.isCompleted) deviceReady.complete();
+                return;
+              }
+              if (!_ready) return;
+              final parsed = BleProtocol.parseEvent(
+                utf8.decode(bytes, allowMalformed: true),
+              );
+              if (parsed != null && parsed.requestId == _activeRequestId) {
+                _events.add(parsed);
+              }
+            },
+            onError: (Object error) {
+              if (!deviceReady.isCompleted) deviceReady.completeError(error);
+            },
+          );
+      final readyRequest = _ble.writeCharacteristicWithResponse(
+        QualifiedCharacteristic(
+          serviceId: service,
+          characteristicId: command,
+          deviceId: deviceId,
+        ),
+        value: const [0x50],
+      );
+      await Future.wait<void>([readyRequest, readyResult]);
     } catch (_) {
       await disconnect();
       rethrow;
@@ -95,7 +131,7 @@ class BleDeviceTransport {
 
   Future<String> startScan() async {
     final deviceId = _deviceId;
-    if (!_connected || deviceId == null || _notifications == null) {
+    if (!_connected || !_ready || deviceId == null || _notifications == null) {
       throw StateError('Connect to a CarePulse device first');
     }
     if (_activeRequestId != null) throw StateError('A scan is already active');
@@ -127,6 +163,7 @@ class BleDeviceTransport {
 
   Future<void> disconnect() async {
     _connected = false;
+    _ready = false;
     _activeRequestId = null;
     _deviceId = null;
     await _notifications?.cancel();

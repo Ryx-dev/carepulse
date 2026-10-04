@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'core/theme.dart';
 import 'firebase_options.dart';
@@ -17,10 +18,15 @@ class CarePulseApp extends StatelessWidget {
 
   final AuthService? auth;
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'CarePulse',
-    debugShowCheckedModeBanner: false,
-    theme: appTheme,
-    home: SplashScreen(next: AuthGate(auth: auth ?? FirebaseAuthService())),
-  );
+  Widget build(BuildContext context) {
+    final next = AuthGate(auth: auth ?? FirebaseAuthService());
+    return MaterialApp(
+      title: 'CarePulse',
+      debugShowCheckedModeBanner: false,
+      theme: appTheme,
+      home: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+          ? next
+          : SplashScreen(next: next),
+    );
+  }
 }

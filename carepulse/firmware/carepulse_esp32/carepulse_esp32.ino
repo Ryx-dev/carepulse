@@ -45,13 +45,20 @@ portMUX_TYPE bleQueueMux = portMUX_INITIALIZER_UNLOCKED;
 bool scanActive = false;
 BLECharacteristic *eventCharacteristic = nullptr;
 bool bleConnected = false;
+bool bleReady = false;
 
 const char *BLE_SERVICE_ID = "11c0a001-9ef2-4b77-9f6c-111111111111";
 const char *BLE_COMMAND_ID = "11c0a002-9ef2-4b77-9f6c-111111111111";
 const char *BLE_EVENT_ID = "11c0a003-9ef2-4b77-9f6c-111111111111";
 
+void bleControlEvent(const uint8_t *frame, size_t length) {
+  if (!bleConnected || eventCharacteristic == nullptr) return;
+  eventCharacteristic->setValue(frame, length);
+  eventCharacteristic->notify();
+}
+
 void bleEvent(const String &frame) {
-  if (!bleConnected || eventCharacteristic == nullptr || frame.length() > 20) return;
+  if (!bleConnected || !bleReady || eventCharacteristic == nullptr || frame.length() > 20) return;
   eventCharacteristic->setValue(frame.c_str());
   eventCharacteristic->notify();
 }
@@ -66,19 +73,42 @@ bool validBleId(const String &id) {
 }
 
 class CarePulseServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer *) override { bleConnected = true; }
+  void onConnect(BLEServer *server) override {
+    bleConnected = true;
+    bleReady = false;
+    server->getAdvertising()->stop();
+  }
   void onDisconnect(BLEServer *server) override {
     bleConnected = false;
+    bleReady = false;
+    portENTER_CRITICAL(&bleQueueMux);
+    pendingBleRequestId[0] = 0;
+    portEXIT_CRITICAL(&bleQueueMux);
     server->getAdvertising()->start();
   }
 };
 
 class CarePulseCommandCallbacks : public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *characteristic) override {
-    String command = String(characteristic->getValue().c_str());
+    auto raw = characteristic->getValue();
+    const uint8_t *bytes = reinterpret_cast<const uint8_t *>(raw.c_str());
+    const size_t length = raw.length();
+    if (!bleConnected) return;
+    if (length == 1 && bytes[0] == 'P') {
+      bleReady = true;
+      const uint8_t ready = 'T';
+      bleControlEvent(&ready, 1);
+      return;
+    }
+    if (!bleReady || length != 10) return;
+    String command = String(raw.c_str());
     if (!command.startsWith("S|")) return;
     String id = command.substring(2);
     if (!validBleId(id)) return;
+    if (!sensorReady) {
+      bleEvent("E|" + id + "|SE");
+      return;
+    }
     // The sensor routine runs in loop(), never inside a BLE callback.
     portENTER_CRITICAL(&bleQueueMux);
     if (!scanActive && pendingBleRequestId[0] == 0) {
@@ -347,6 +377,7 @@ void setup() {
     Serial.println("state=error reason=buzzer_setup_failed");
     return;
   }
+  setupBle();
   if (!Wire.begin(SDA_PIN, SCL_PIN)) {
     sensorError("i2c_setup_failed");
     return;
@@ -360,7 +391,6 @@ void setup() {
   sensor.setup(60, 4, 2, 100, 411, 4096);
   sensor.clearFIFO();
   sensorReady = true;
-  setupBle();
   showReady();
 }
 

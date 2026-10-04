@@ -40,11 +40,28 @@ eight uppercase hexadecimal characters. Notifications for that ID are `W`
 100 collected samples or a 10-second deadline. The app must ignore notifications for other IDs.
 
 This is a transport prototype, not secure pairing. The firmware advertises a
-CarePulse BLE service and currently accepts a nearby write without device
-ownership verification. Do not use it with personal measurements until pairing,
-authorization, and physical tests are complete. An Android/iOS BLE transport
+CarePulse BLE service while free and allows the connected phone to scan after
+a `P` / `T` readiness exchange. It stops advertising while connected and
+advertises again on disconnect. This does not verify device ownership; another
+nearby phone can connect when the device is free. An Android/iOS BLE transport
 adapter is now in `lib/services/ble_device_transport.dart`; it discovers the
 service, connects, subscribes to notifications, sends scan commands, and
 matches events to the active request ID. The mobile home screen opens a live
 BLE scan flow that discovers, connects, sends a scan, and displays the result.
-Firebase upload code, encrypted offline storage, and live account history are implemented. Database rules are deployed to the development project; phone/cloud verification remains. Ownership pairing remains pending. Live results are separate from demo history.
+Firebase upload code, encrypted offline storage, and live account history are implemented. Database rules are deployed to the development project; one phone upload and account history read succeeded. The tap-to-connect app discovered the ESP32, connected without a code, disconnected, and reconnected on a Samsung SM-A135F. The sensor scan remains a separate hardware check. Live results are separate from demo history.
+
+## October 2, 2026 tap-to-connect revision
+
+The earlier code-entry HMAC prototype was replaced at the user's request. The
+app connects by tapping a discovered CarePulse device, waits for the device's
+`T` response to a `P` readiness request, and provides a Disconnect button.
+The firmware accepts scan commands only after that exchange for the current
+connection. It stops advertising while connected and advertises again when the
+connection ends. No Bluetooth bond, persistent owner, or link encryption is
+established by this application protocol. A nearby phone can take the next free
+connection, and an unexpected radio disconnect also releases the device.
+
+The previous firmware flash reported `max30102_not_found`; verify the sensor
+wiring before relying on a live scan. After updating both sides, the Samsung
+SM-A135F discovered the ESP32, connected without a code, disconnected, and
+reconnected successfully. A complete sensor scan was not checked in this pass.

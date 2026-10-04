@@ -20,10 +20,12 @@ class LiveBleScanScreen extends StatefulWidget {
     required this.activity,
     required this.note,
     required this.sync,
+    this.transport,
   });
   final String activity;
   final String note;
   final BleMeasurementSync sync;
+  final BleDeviceTransport? transport;
 
   @override
   State<LiveBleScanScreen> createState() => _LiveBleScanScreenState();
@@ -31,12 +33,15 @@ class LiveBleScanScreen extends StatefulWidget {
 
 class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
   static const _permissions = MethodChannel('carepulse/ble_permissions');
-  final BleDeviceTransport _transport = BleDeviceTransport();
+  late final BleDeviceTransport _transport =
+      widget.transport ?? BleDeviceTransport();
   StreamSubscription<DiscoveredDevice>? _discovery;
   StreamSubscription<BleScanEvent>? _events;
   StreamSubscription<bool>? _connection;
+  StreamSubscription<BleStatus>? _statusSubscription;
   Timer? _discoveryTimer;
   Timer? _scanTimer;
+  Future<void>? _statusCleanup;
   final Map<String, DiscoveredDevice> _devices = {};
 
   String _message = 'Looking for your CarePulse device';
@@ -54,14 +59,26 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
   bool _discovering = false;
   bool _connecting = false;
   bool _scanInProgress = false;
+  bool _manualDisconnect = false;
+  bool _preparing = false;
+  bool _searchOnReady = true;
+  bool _enablingBluetooth = false;
+  BleStatus _status = BleStatus.unknown;
+  int _operationEpoch = 0;
 
   @override
   void initState() {
     super.initState();
+    _status = _transport.status;
     widget.sync.addListener(_onSyncChanged);
     _events = _transport.events.listen(_onEvent);
     _connection = _transport.connectionStates.listen((connected) {
-      if (!mounted || connected) return;
+      if (!mounted ||
+          connected ||
+          _manualDisconnect ||
+          _status != BleStatus.ready) {
+        return;
+      }
       _scanTimer?.cancel();
       setState(() {
         _deviceName = null;
@@ -76,6 +93,7 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
         _message = 'Disconnected';
       });
     });
+    _statusSubscription = _transport.statusStream.listen(_onStatusChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _findDevices());
   }
 
@@ -83,42 +101,177 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _findDevices() async {
-    if (!mounted || _discovering || _connecting || _scanInProgress) return;
-    await _discovery?.cancel();
+  void _onStatusChanged(BleStatus status) {
+    if (!mounted || status == _status) return;
+    final wasReady = _status == BleStatus.ready;
+    _status = status;
+    if (status == BleStatus.ready) {
+      setState(() {
+        if (_pendingMeasurement == null) _error = null;
+      });
+      if (_searchOnReady && !_preparing && !_discovering && !_connecting) {
+        _searchOnReady = false;
+        unawaited(_findDevices());
+      }
+      return;
+    }
+
+    final interrupted = wasReady && _scanInProgress;
+    _operationEpoch++;
+    _searchOnReady = true;
     _discoveryTimer?.cancel();
+    _scanTimer?.cancel();
+    final requestId = _requestId;
+    if (requestId != null) _transport.finishScan(requestId);
+    final previousCleanup = _statusCleanup;
+    _statusCleanup = () async {
+      await previousCleanup;
+      await _discovery?.cancel();
+      await _transport.disconnect();
+    }();
+    unawaited(_statusCleanup);
     setState(() {
       _devices.clear();
-      _discovering = true;
+      _deviceName = null;
+      _deviceId = null;
+      _discovering = false;
+      _connecting = false;
+      _scanInProgress = false;
       if (_pendingMeasurement == null) {
         _requestId = null;
         _bpm = null;
         _spo2 = null;
-        _saveError = null;
-        _saved = false;
       }
-      _error = null;
-      _message = 'Searching for CarePulse nearby…';
+      _message = _statusTitle(status);
+      _error = _statusGuidance(status, interrupted: interrupted);
     });
+  }
+
+  String _statusTitle(BleStatus status) => switch (status) {
+    BleStatus.poweredOff => 'Bluetooth is off',
+    BleStatus.unauthorized => 'Bluetooth permission needed',
+    BleStatus.locationServicesDisabled => 'Location services are off',
+    BleStatus.unsupported => 'Bluetooth is unavailable',
+    BleStatus.unknown => 'Preparing Bluetooth…',
+    BleStatus.ready => 'Looking for your CarePulse device',
+  };
+
+  String? _statusGuidance(
+    BleStatus status, {
+    bool interrupted = false,
+  }) => switch (status) {
+    BleStatus.poweredOff =>
+      interrupted
+          ? defaultTargetPlatform == TargetPlatform.iOS
+                ? 'Bluetooth was turned off. The scan was interrupted. Turn it on in iPhone Settings and try again.'
+                : 'Bluetooth was turned off. The scan was interrupted. Turn it on and try again.'
+          : defaultTargetPlatform == TargetPlatform.iOS
+          ? 'Turn on Bluetooth in iPhone Settings, then return to CarePulse.'
+          : 'Turn on Bluetooth to find and measure with CarePulse.',
+    BleStatus.unauthorized =>
+      'Allow Bluetooth access for CarePulse in your phone settings, then retry.',
+    BleStatus.locationServicesDisabled =>
+      'Turn on Location services in your phone settings to search for CarePulse.',
+    BleStatus.unsupported =>
+      'This phone does not support the Bluetooth connection CarePulse needs.',
+    BleStatus.unknown || BleStatus.ready => null,
+  };
+
+  Future<void> _enableBluetooth() async {
+    if (_enablingBluetooth || _status != BleStatus.poweredOff) return;
+    setState(() => _enablingBluetooth = true);
+    try {
+      await _permissions.invokeMethod<bool>('enable');
+      // The status stream starts discovery once the adapter is actually ready.
+    } on PlatformException {
+      if (mounted && _status == BleStatus.poweredOff) {
+        setState(
+          () => _error =
+              'Could not open the Bluetooth prompt. Turn on Bluetooth in your phone settings.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _enablingBluetooth = false);
+    }
+  }
+
+  Future<void> _findDevices() async {
+    if (!mounted ||
+        _preparing ||
+        _discovering ||
+        _connecting ||
+        _scanInProgress) {
+      return;
+    }
+    _preparing = true;
+    final epoch = _operationEpoch;
     try {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
         final granted = await _permissions.invokeMethod<bool>('request');
+        if (!mounted || epoch != _operationEpoch) return;
         if (granted != true) {
-          throw StateError('Bluetooth permission is needed to find CarePulse.');
+          _status = BleStatus.unauthorized;
+          setState(() {
+            _message = _statusTitle(_status);
+            _error = _statusGuidance(_status);
+          });
+          return;
         }
       }
-      if (!mounted) return;
+      if (!mounted || epoch != _operationEpoch) return;
+      await _statusCleanup;
+      if (!mounted || epoch != _operationEpoch) return;
+      final currentStatus = _transport.status;
+      if (currentStatus != _status) _onStatusChanged(currentStatus);
+      if (_status != BleStatus.ready) {
+        _searchOnReady = true;
+        setState(() {
+          _message = _statusTitle(_status);
+          _error = _statusGuidance(_status);
+        });
+        return;
+      }
+      await _discovery?.cancel();
+      if (!mounted || epoch != _operationEpoch || _status != BleStatus.ready) {
+        return;
+      }
+      _discoveryTimer?.cancel();
+      _searchOnReady = false;
+      setState(() {
+        _devices.clear();
+        _discovering = true;
+        if (_pendingMeasurement == null) {
+          _requestId = null;
+          _bpm = null;
+          _spo2 = null;
+          _saveError = null;
+          _saved = false;
+        }
+        _error = null;
+        _message = 'Searching for CarePulse nearby…';
+      });
       _discovery = _transport.discover().listen(
         (device) {
-          if (!mounted) return;
+          if (!mounted ||
+              epoch != _operationEpoch ||
+              _status != BleStatus.ready) {
+            return;
+          }
           setState(() => _devices[device.id] = device);
         },
-        onError: (Object error) =>
-            _showError('Could not search for CarePulse: $error'),
+        onError: (Object error) {
+          if (epoch == _operationEpoch && _status == BleStatus.ready) {
+            _showError('Could not search for CarePulse: $error');
+          }
+        },
       );
       _discoveryTimer = Timer(const Duration(seconds: 10), () async {
         await _discovery?.cancel();
-        if (!mounted) return;
+        if (!mounted ||
+            epoch != _operationEpoch ||
+            _status != BleStatus.ready) {
+          return;
+        }
         setState(() {
           _discovering = false;
           _message = _devices.isEmpty
@@ -127,14 +280,22 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
         });
       });
     } catch (error) {
-      _showError(error.toString().replaceFirst('Bad state: ', ''));
+      if (epoch == _operationEpoch && _status == BleStatus.ready) {
+        _showError(error.toString().replaceFirst('Bad state: ', ''));
+      }
+    } finally {
+      _preparing = false;
+      if (mounted && _status == BleStatus.ready && _searchOnReady) {
+        _searchOnReady = false;
+        unawaited(_findDevices());
+      }
     }
   }
 
   Future<void> _connect(DiscoveredDevice device) async {
+    if (_status != BleStatus.ready) return;
+    final epoch = _operationEpoch;
     _discoveryTimer?.cancel();
-    await _discovery?.cancel();
-    if (!mounted) return;
     setState(() {
       _discovering = false;
       _connecting = true;
@@ -142,8 +303,14 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
       _message = 'Connecting to CarePulse…';
     });
     try {
+      await _discovery?.cancel();
+      if (!mounted || epoch != _operationEpoch || _status != BleStatus.ready) {
+        return;
+      }
       await _transport.connect(device.id);
-      if (!mounted) return;
+      if (!mounted || epoch != _operationEpoch || _status != BleStatus.ready) {
+        return;
+      }
       setState(() {
         _connecting = false;
         _deviceName = device.name.isEmpty ? 'CarePulse' : device.name;
@@ -151,18 +318,38 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
         _message = 'Connected. Place your finger on the sensor, then start.';
       });
     } catch (error) {
-      _showError(
-        'Could not connect. Move closer to CarePulse and retry. $error',
-      );
+      if (epoch == _operationEpoch && _status == BleStatus.ready) {
+        _showError(
+          'Could not connect. Move closer to CarePulse and retry. $error',
+        );
+      }
     }
   }
 
+  Future<void> _disconnect() async {
+    _manualDisconnect = true;
+    try {
+      await _transport.disconnect();
+    } finally {
+      _manualDisconnect = false;
+    }
+    if (!mounted) return;
+    setState(() {
+      _deviceName = null;
+      _deviceId = null;
+      _error = null;
+      _message = 'Disconnected. Choose a device to connect again.';
+    });
+  }
+
   Future<void> _startScan() async {
-    if (!_transport.isConnected ||
+    if (_status != BleStatus.ready ||
+        !_transport.isConnected ||
         _scanInProgress ||
         (_pendingMeasurement != null && !_saved)) {
       return;
     }
+    final epoch = _operationEpoch;
     setState(() {
       _scanInProgress = true;
       _error = null;
@@ -176,8 +363,15 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
       _message = 'Sending scan request…';
     });
     try {
-      _requestId = await _transport.startScan();
-      if (!mounted || !_scanInProgress) return;
+      final requestId = await _transport.startScan();
+      if (!mounted ||
+          epoch != _operationEpoch ||
+          _status != BleStatus.ready ||
+          !_scanInProgress) {
+        _transport.finishScan(requestId);
+        return;
+      }
+      _requestId = requestId;
       _scanTimer = Timer(const Duration(seconds: 20), () {
         final id = _requestId;
         if (id != null) _transport.finishScan(id);
@@ -186,12 +380,14 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
         );
       });
     } catch (error) {
-      _showError('Could not start the scan: $error');
+      if (epoch == _operationEpoch && _status == BleStatus.ready) {
+        _showError('Could not start the scan: $error');
+      }
     }
   }
 
   void _onEvent(BleScanEvent event) {
-    if (!mounted) return;
+    if (!mounted || _status != BleStatus.ready || !_scanInProgress) return;
     if (event.stage == BleEventStage.complete ||
         event.stage == BleEventStage.invalid ||
         event.stage == BleEventStage.error) {
@@ -269,7 +465,8 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
       if (!identical(_pendingMeasurement, measurement)) return;
       setState(() {
         _saving = false;
-        _saveError = 'Could not save this result on the phone. Retry before leaving this screen.';
+        _saveError =
+            'Could not save this result on the phone. Retry before leaving this screen.';
       });
     }
   }
@@ -317,6 +514,7 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
     unawaited(_discovery?.cancel());
     unawaited(_events?.cancel());
     unawaited(_connection?.cancel());
+    unawaited(_statusSubscription?.cancel());
     unawaited(_transport.dispose());
     widget.sync.removeListener(_onSyncChanged);
     super.dispose();
@@ -412,9 +610,19 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
                       ],
                     ],
                     const SizedBox(height: 20),
-                    if (_transport.isConnected)
+                    if (_status == BleStatus.poweredOff &&
+                        !kIsWeb &&
+                        defaultTargetPlatform == TargetPlatform.android)
+                      ElevatedButton.icon(
+                        onPressed: _enablingBluetooth ? null : _enableBluetooth,
+                        icon: const Icon(Icons.bluetooth_rounded),
+                        label: const Text('Turn on Bluetooth'),
+                      )
+                    else if (_status == BleStatus.ready &&
+                        _transport.isConnected)
                       ElevatedButton(
-                        onPressed: _scanInProgress ||
+                        onPressed:
+                            _scanInProgress ||
                                 (_pendingMeasurement != null && !_saved)
                             ? null
                             : _startScan,
@@ -422,13 +630,29 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
                           _bpm == null ? 'Start live scan' : 'Scan again',
                         ),
                       )
-                    else
+                    else if (_status == BleStatus.ready ||
+                        _status == BleStatus.unauthorized ||
+                        _status == BleStatus.locationServicesDisabled)
                       OutlinedButton(
-                        onPressed: _discovering || _connecting
+                        onPressed: _preparing || _discovering || _connecting
                             ? null
                             : _findDevices,
                         child: const Text('Search again'),
                       ),
+                    if (_status == BleStatus.ready &&
+                        _transport.isConnected) ...[
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed:
+                            _scanInProgress ||
+                                _saving ||
+                                (_pendingMeasurement != null && !_saved)
+                            ? null
+                            : _disconnect,
+                        icon: const Icon(Icons.bluetooth_disabled),
+                        label: const Text('Disconnect'),
+                      ),
+                    ],
                     if (_saved) ...[
                       const SizedBox(height: 8),
                       TextButton(
@@ -440,7 +664,9 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
                 ),
               ),
             ),
-            if (!_transport.isConnected && _devices.isNotEmpty) ...[
+            if (_status == BleStatus.ready &&
+                !_transport.isConnected &&
+                _devices.isNotEmpty) ...[
               const SizedBox(height: 18),
               Text(
                 'Nearby CarePulse devices',
@@ -459,7 +685,7 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded),
+                    trailing: const Text('Connect'),
                     onTap: _connecting ? null : () => _connect(device),
                   ),
                 ),
@@ -467,7 +693,9 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
             ],
             const SizedBox(height: 16),
             Text(
-              _deviceName == null
+              _status != BleStatus.ready
+                  ? 'CarePulse needs Bluetooth to connect to your sensor.'
+                  : _deviceName == null
                   ? 'Keep the ESP32 powered on and near your phone.'
                   : 'Connected to $_deviceName. Completed scans are saved on this phone, then uploaded when online.',
               style: const TextStyle(color: slate),
