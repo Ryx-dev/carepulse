@@ -1,6 +1,6 @@
 # CarePulse project handoff
 
-**Status checked:** October 2, 2026
+**Status checked:** October 4, 2026
 **Application root:** `carepulse/` (the directory containing `pubspec.yaml`)  
 **Planning document:** `../CAREPULSE_CODEX.md`
 
@@ -252,3 +252,15 @@ When changing this document, record the date, the concrete files/features change
 - At the user's request, the code-entry pairing prototype was replaced with a tap-to-connect BLE session. The app waits for a `P` / `T` readiness exchange and offers Disconnect. The ESP32 advertises only while free and releases the session on disconnect.
 - This is temporary connection access without a persistent device owner or an authenticated Bluetooth bond. Any nearby phone can connect when the ESP32 is free; a dropped connection also makes it available. Firebase measurements still upload under the signed-in phone account.
 - The revised APK was installed on the Samsung SM-A135F and the user uploaded the firmware. The phone discovered the ESP32, connected without a code, disconnected, and reconnected successfully. The earlier ESP32 flash reported `max30102_not_found`; a complete sensor scan remains unverified.
+
+## October 4, 2026 sensor calibration and reading quality
+
+- After the sensor was mounted in its housing, the user reported an app reading of 187 BPM without a simultaneous reference pulse or Serial log. This value has not been verified.
+- Added `CAL EMPTY`, `CAL FINGER`, and `CAL RESET` Serial commands. The mounted sensor's empty and finger IR ranges produce a saved contact threshold; weak separation is rejected. See `firmware/README.md` for the procedure.
+- A scan now collects 125 pairs at an expected 25 Hz, rejects flat or saturated IR and timing errors, and compares BPM from two overlapping 100-sample windows before sending a result. The app explains the new signal-quality failure.
+- The BLE screen tests passed. Flutter/Dart analysis did not return in this environment and was stopped. The ESP32 sketch could not be compiled or flashed here because an Arduino CLI was not available; housing calibration and result accuracy still require physical verification with a reference pulse measurement.
+
+## October 4, 2026 app and Firebase queue progress
+
+- The user asked to defer physical calibration and continue the app/Firebase flow. `BleMeasurementSync` now attempts each queued scan once per retry pass. A record that fails upload remains encrypted on the phone while later records can still upload. The first failure stays visible; it clears after a fully successful retry.
+- A second guard rejects a different scan that reuses a pending request ID instead of silently dropping its result. Regression tests cover both behaviors. All six BLE sync tests and the full 39-test Flutter suite passed. A debug APK build gave no output for 90 seconds and was stopped; ADB could not launch in this sandbox (`Access is denied`). These are local tests; no new live Firebase write or offline phone scan was performed in this checkpoint.

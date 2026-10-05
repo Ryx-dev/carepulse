@@ -103,6 +103,64 @@ void main() {
     await network.close();
   });
 
+  test('a conflicting scan ID cannot silently replace a saved result', () async {
+    final store = MemoryStore();
+    final network = StreamController<List<ConnectivityResult>>.broadcast();
+    final sync = BleMeasurementSync(
+      uid: 'alice', store: store,
+      upload: (_) async => throw StateError('offline'),
+      connectivityChanges: network.stream,
+    );
+    await sync.enqueue(scan('A1B2C3D4'));
+    final conflict = Measurement(
+      id: 'A1B2C3D4',
+      requestId: 'A1B2C3D4',
+      deviceId: 'carepulse_1',
+      bpm: 187,
+      spo2: 98,
+      activity: 'Resting',
+      note: 'Morning',
+      scanDurationSeconds: 6,
+      timestamp: DateTime.fromMillisecondsSinceEpoch(1760000000000),
+    );
+    await expectLater(sync.enqueue(conflict), throwsStateError);
+    expect(store.values['alice']!.single.bpm, 78);
+    sync.dispose();
+    await network.close();
+  });
+
+  test('a failed scan does not block later pending uploads', () async {
+    final store = MemoryStore()
+      ..values['alice'] = [scan('AAAAAAAA'), scan('BBBBBBBB')];
+    final network = StreamController<List<ConnectivityResult>>.broadcast();
+    var firstFails = true;
+    final uploads = <String>[];
+    final sync = BleMeasurementSync(
+      uid: 'alice', store: store,
+      upload: (measurement) async {
+        uploads.add(measurement.requestId);
+        if (firstFails && measurement.requestId == 'AAAAAAAA') {
+          throw StateError('first record rejected');
+        }
+      },
+      connectivityChanges: network.stream,
+    );
+
+    await sync.initialize();
+    await sync.retry();
+    expect(uploads, containsAll(['AAAAAAAA', 'BBBBBBBB']));
+    expect(sync.pending.map((item) => item.requestId), ['AAAAAAAA']);
+    expect(store.values['alice']!.map((item) => item.requestId), ['AAAAAAAA']);
+    expect(sync.failureMessage, isNotNull);
+
+    firstFails = false;
+    await sync.retry();
+    expect(sync.pending, isEmpty);
+    expect(sync.failureMessage, isNull);
+    sync.dispose();
+    await network.close();
+  });
+
   test('a local storage failure never uploads an unqueued result', () async {
     final store = MemoryStore()..failWrites = true;
     final network = StreamController<List<ConnectivityResult>>.broadcast();

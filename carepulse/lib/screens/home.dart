@@ -46,6 +46,10 @@ class _HomeShellState extends State<HomeShell> {
   List<Measurement> _liveMeasurements = const [];
   bool _historyError = false;
   MockDataService get data => widget.data;
+  bool get supportsLiveScan =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   bool get scanInProgress => switch (data.stage) {
     ScanStage.requestingScan ||
@@ -243,7 +247,10 @@ class _HomeShellState extends State<HomeShell> {
       2 =>
         widget.uid == null
             ? DeviceScreen(device: data.device)
-            : LiveDeviceScreen(onConnect: openLiveScan),
+            : LiveDeviceScreen(
+                onConnect: openLiveScan,
+                scanningAvailable: supportsLiveScan,
+              ),
       _ => ProfileScreen(
         name: widget.name,
         email: widget.email,
@@ -519,10 +526,7 @@ class _HomeShellState extends State<HomeShell> {
                 ),
               ),
               const SizedBox(height: 10),
-              if (widget.uid != null &&
-                  !kIsWeb &&
-                  (defaultTargetPlatform == TargetPlatform.android ||
-                      defaultTargetPlatform == TargetPlatform.iOS)) ...[
+              if (widget.uid != null && supportsLiveScan) ...[
                 Card(
                   margin: EdgeInsets.zero,
                   child: Padding(
@@ -580,7 +584,7 @@ class _HomeShellState extends State<HomeShell> {
                         ElevatedButton.icon(
                           onPressed: openLiveScan,
                           icon: const Icon(Icons.bluetooth_rounded),
-                          label: const Text('Connect and scan'),
+                          label: const Text('Start measurement'),
                         ),
                         const SizedBox(height: 6),
                         const Text(
@@ -594,6 +598,17 @@ class _HomeShellState extends State<HomeShell> {
                 ),
                 const SizedBox(height: 14),
               ],
+              if (widget.uid != null && !supportsLiveScan)
+                const Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text(
+                      'To start a measurement, open the CarePulse mobile app on your phone and connect to your device over Bluetooth.',
+                      style: TextStyle(color: slate),
+                    ),
+                  ),
+                ),
               if (widget.uid == null)
                 Card(
                   margin: EdgeInsets.zero,
@@ -736,13 +751,6 @@ class _HomeShellState extends State<HomeShell> {
                     ),
                   ),
               const SizedBox(height: 20),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4),
-                child: Text(
-                  'CarePulse is for personal monitoring and logging only. It is not a medical diagnostic device.',
-                  style: TextStyle(fontSize: 11, color: slate, height: 1.4),
-                ),
-              ),
             ],
           ),
         ),

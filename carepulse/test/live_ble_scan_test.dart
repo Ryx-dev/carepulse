@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
-
 import 'package:carepulse/models/measurement.dart';
 import 'package:carepulse/screens/live_ble_scan.dart';
 import 'package:carepulse/services/ble_device_transport.dart';

@@ -85,13 +85,28 @@ class BleMeasurementSync extends ChangeNotifier with WidgetsBindingObserver {
     await initialize();
     if (_disposed) throw StateError('Measurement session ended.');
     await _commit((current) {
-      if (current.any((item) => item.requestId == measurement.requestId)) {
+      final duplicate = current.where(
+        (item) => item.requestId == measurement.requestId,
+      );
+      if (duplicate.isNotEmpty) {
+        if (!_sameMeasurement(duplicate.first, measurement)) {
+          throw StateError('A different scan already uses this request ID.');
+        }
         return current;
       }
       return [...current, measurement];
     });
     unawaited(retry());
   }
+
+  bool _sameMeasurement(Measurement a, Measurement b) =>
+      a.deviceId == b.deviceId &&
+      a.bpm == b.bpm &&
+      a.spo2 == b.spo2 &&
+      a.activity == b.activity &&
+      a.note == b.note &&
+      a.scanDurationSeconds == b.scanDurationSeconds &&
+      a.timestamp.millisecondsSinceEpoch == b.timestamp.millisecondsSinceEpoch;
 
   Future<void> _commit(
     List<Measurement> Function(List<Measurement>) change,
@@ -123,8 +138,15 @@ class BleMeasurementSync extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _flush() async {
-    while (!_disposed && _pending.isNotEmpty) {
-      final measurement = _pending.first;
+    final attempted = <String>{};
+    Object? firstError;
+    while (!_disposed) {
+      final remaining = _pending.where(
+        (item) => !attempted.contains(item.requestId),
+      );
+      if (remaining.isEmpty) break;
+      final measurement = remaining.first;
+      attempted.add(measurement.requestId);
       try {
         if (_customUpload != null) {
           await _customUpload(measurement);
@@ -134,13 +156,12 @@ class BleMeasurementSync extends ChangeNotifier with WidgetsBindingObserver {
         await _commit((current) => current
             .where((item) => item.requestId != measurement.requestId)
             .toList());
-        _lastError = null;
       } catch (error) {
-        _lastError = error;
-        if (!_disposed) notifyListeners();
-        return;
+        firstError ??= error;
       }
     }
+    _lastError = firstError;
+    if (!_disposed) notifyListeners();
   }
 
   @override

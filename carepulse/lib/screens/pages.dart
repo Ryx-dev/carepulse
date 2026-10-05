@@ -527,8 +527,13 @@ class DeviceScreen extends StatelessWidget {
 }
 
 class LiveDeviceScreen extends StatelessWidget {
-  const LiveDeviceScreen({super.key, required this.onConnect});
+  const LiveDeviceScreen({
+    super.key,
+    required this.onConnect,
+    this.scanningAvailable = true,
+  });
   final VoidCallback onConnect;
+  final bool scanningAvailable;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -556,10 +561,17 @@ class LiveDeviceScreen extends StatelessWidget {
               const SizedBox(height: 14),
               const Text('Keep CarePulse powered on and close to your phone.'),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: onConnect,
-                child: const Text('Connect and scan'),
-              ),
+              if (scanningAvailable)
+                ElevatedButton(
+                  onPressed: onConnect,
+                  child: const Text('Connect and scan'),
+                )
+              else
+                const Text(
+                  'Open the CarePulse mobile app to connect and start a measurement.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: slate),
+                ),
             ],
           ),
         ),

@@ -400,7 +400,7 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
         case BleEventStage.waiting:
           _message = 'Waiting for your finger (up to 3 seconds)…';
         case BleEventStage.scanning:
-          _message = 'Collecting 100 samples. Keep your finger still.';
+          _message = 'Collecting sensor samples. Keep your finger still.';
         case BleEventStage.processing:
           _message = 'Calculating your measurement…';
         case BleEventStage.complete:
@@ -430,7 +430,9 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
             'NF' => 'No finger was detected within 3 seconds.',
             'FR' => 'Finger contact was lost during the scan.',
             'FS' =>
-              'Fewer than 100 usable samples were collected in 10 seconds.',
+              'Not enough steady sensor samples were collected in 10 seconds.',
+            'SQ' =>
+              'The pulse signal was unstable. Keep your finger still and try again.',
             'AR' => 'The sensor could not calculate a valid result. Try again.',
             _ => 'The scan was not valid. Try again.',
           };

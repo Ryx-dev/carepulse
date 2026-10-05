@@ -46,29 +46,52 @@ I2C pullup directly to the ESP32 pins. No physical scan button is used.
 
 The red LED stays on during initialization and for a device error. Two
 short beeps mean a valid estimate, one long beep means an invalid scan, and
-three short beeps mean a device error. `FINGER_IR_MIN` is a calibration value,
-currently 50000, not a verified production threshold. A test saw no-finger
-IR near 850 with occasional increases, so 900 must not be assumed safe.
-Enable `DEBUG_RAW_DATA` to log `WAIT` readings, then record no-finger,
-finger-present, and finger-removed RED/IR ranges on the actual hardware before
-choosing a cutoff. Printing every raw sample at 9600 baud can consume the
-10-second allowance. Keep `DEBUG_RAW_DATA = false` for scan timing tests,
-normal scans, and USB gateway use.
+three short beeps mean a device error.
+
+## Calibrate in the final housing
+
+Keep the sensor mounted and connect USB Serial Monitor at **9600 baud** with
+newline enabled. Calibration measures the actual light level through the
+housing; do it again if the sensor position or cover changes.
+
+1. Leave the sensor completely uncovered. Send `CAL EMPTY`. Keep the
+   `CAL_EMPTY min_ir=... max_ir=... mean_ir=...` line.
+2. Place a finger over the sensor as it will be held during a scan, with
+   steady, gentle contact. Send `CAL FINGER` and hold it still for three
+   seconds. Keep the `CAL_FINGER` and `CAL_SAVED finger_ir_min=...` lines.
+3. Repeat `CAL EMPTY` and `CAL FINGER` if calibration reports a weak finger
+   signal. Check sensor alignment, cover opacity, and contact before changing
+   code constants. `CAL RESET` restores the original 50000 IR threshold.
+
+The threshold is saved on the ESP32. It only detects finger contact; it does
+not calibrate BPM or SpO2 accuracy. `SIGNAL_QUALITY` and `ALGORITHM` lines
+appear after a full scan and show sampling, signal range, and two heart-rate
+estimates. A scan now needs 125 consecutive samples so two overlapping
+four-second windows can agree before a result is saved. Timing outside 22–28
+samples per second, a flat or saturated IR signal, or inconsistent estimates
+returns an invalid scan. These checks can reject some good scans; they cannot
+prove that an accepted result is accurate. Compare several still-finger scans
+with a reference pulse measurement before relying on a result. Do not change
+the BPM limit merely to hide a high reading.
+
+Enable `DEBUG_RAW_DATA` only for deeper diagnostics. Printing every raw sample
+at 9600 baud can consume the 10-second allowance. Leave it `false` for normal
+scans.
 This is a prototype
 estimate for personal logging; it is not a medical diagnostic device.
 
 Finger confirmation must happen within the first 3 seconds. Contact then gets
-1 second to settle. The sketch collects 100 consecutive valid RED/IR pairs and
+1 second to settle. The sketch collects 125 consecutive valid RED/IR pairs and
 finishes as soon as it has them; 10 seconds is the total deadline, including
 finger acquisition and settling. Contact below the threshold for 3 continuous
 seconds ends the scan with `finger_removed`. A shorter loss resets the sample
 buffer and settling period when contact returns. If the deadline arrives before
-100 pairs are collected, the scan ends with `too_few_samples`. `SCAN_SUMMARY`
+125 pairs are collected, the scan ends with `too_few_samples`. `SCAN_SUMMARY`
 reports collection duration, total received samples, valid contact samples,
 `collected_samples` in the current uninterrupted batch, and received samples
 per second. Valid contact samples during settling, or before a contact loss,
-do not count toward the required 100 collected samples. The unchanged SparkFun algorithm uses the
-**100 collected red/IR pairs**.
+do not count toward the required 125 collected samples. The unchanged SparkFun
+algorithm runs on two overlapping windows of **100 collected red/IR pairs**.
 
 The sketch also accepts `SCAN <requestId>` for the USB gateway. It includes the
 same ID in progress and terminal Serial lines, and refuses the same ID twice
