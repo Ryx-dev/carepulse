@@ -6,6 +6,31 @@ void main() {
   test('mobile transport API is available', () {
     expect(BleDeviceTransport, isNotNull);
   });
+  test('monitoring and cancellation frames are bounded and validated', () {
+    expect(BleProtocol.monitorCommand('A1B2C3D4'), 'M|A1B2C3D4');
+    expect(BleProtocol.cancelCommand('A1B2C3D4'), 'X|A1B2C3D4');
+    expect(() => BleProtocol.monitorCommand('bad'), throwsFormatException);
+    expect(() => BleProtocol.cancelCommand('bad'), throwsFormatException);
+    for (final entry in {
+      'V|A1B2C3D4|219|100': BleEventStage.reading,
+      'F|A1B2C3D4': BleEventStage.contactLost,
+      'U|A1B2C3D4': BleEventStage.unavailable,
+      'A|A1B2C3D4': BleEventStage.cancelled,
+    }.entries) {
+      expect(entry.key.length, lessThanOrEqualTo(20));
+      expect(BleProtocol.parseEvent(entry.key)?.stage, entry.value);
+    }
+    for (final frame in [
+      'V|A1B2C3D4|0|98',
+      'V|A1B2C3D4|78|101',
+      'F|bad',
+      'A|A1B2C3D4|extra',
+      'U|A1B2C3D4|extra',
+    ]) {
+      expect(BleProtocol.parseEvent(frame), isNull);
+    }
+  });
+
   test('rejects malformed requests and results', () {
     expect(() => BleProtocol.scanCommand('bad'), throwsFormatException);
     expect(BleProtocol.parseEvent('C|A1B2C3D4|78|98')?.bpm, 78);

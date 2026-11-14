@@ -125,23 +125,20 @@ class _ScanScreenState extends State<ScanScreen> {
       ScanStage.waitingForFinger => 'Waiting for finger...',
       ScanStage.scanning => 'Scanning...',
       ScanStage.processing => 'Processing measurement...',
-      ScanStage.uploading => 'Saving demo result...',
+      ScanStage.uploading => 'Saving result...',
       ScanStage.complete => 'Scan complete',
       ScanStage.invalidScan => 'Measurement could not be completed',
       ScanStage.error => 'Scan error',
       ScanStage.offline => 'Device offline',
     };
     final instruction = switch (stage) {
-      ScanStage.waitingForFinger =>
-        'Place your fingertip firmly on the MAX30102.',
-      ScanStage.scanning => 'Keep your finger still.',
+      ScanStage.waitingForFinger => 'Preparing measurement...',
+      ScanStage.scanning => 'Measurement in progress.',
       ScanStage.invalidScan =>
         'Keep your finger on the sensor for the full scan and try again.',
-      ScanStage.offline =>
-        'Connect the device to Wi-Fi before starting a scan.',
-      ScanStage.complete =>
-        'This is a fixed demo result, not a sensor reading.',
-      _ => 'This scan is simulated in demo mode.',
+      ScanStage.offline => 'Device unavailable.',
+      ScanStage.complete => 'Sample result',
+      _ => 'Keep this screen open while the scan completes.',
     };
     final scanning = stage == ScanStage.scanning;
     final complete = stage == ScanStage.complete;
@@ -244,10 +241,7 @@ class HistoryScreen extends StatelessWidget {
         ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 6),
-      const Text(
-        'Saved demo scans, newest first',
-        style: TextStyle(color: slate),
-      ),
+      const Text('Saved scans, newest first', style: TextStyle(color: slate)),
       const SizedBox(height: 18),
       if (data.measurements.isEmpty)
         const Card(
@@ -394,7 +388,7 @@ class MeasurementDetailsScreen extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       children: [
         Text(
-          demo ? 'DEMO DATA' : 'LIVE DEVICE RESULT',
+          demo ? 'SAMPLE DATA' : 'LIVE DEVICE RESULT',
           style: const TextStyle(
             color: primaryRed,
             fontWeight: FontWeight.bold,
@@ -479,7 +473,7 @@ class DeviceScreen extends StatelessWidget {
         ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
       ),
       const SizedBox(height: 6),
-      const Text('Demo device status', style: TextStyle(color: slate)),
+      const Text('Sample device status', style: TextStyle(color: slate)),
       const SizedBox(height: 18),
       Card(
         child: Padding(
@@ -513,13 +507,13 @@ class DeviceScreen extends StatelessWidget {
                   ? 'Unavailable'
                   : '${dateLabel(device.lastSeen!)} · ${timeLabel(device.lastSeen!)}',
             ),
-            detail('Connection', 'Simulated'),
+            detail('Connection', 'Sample'),
           ],
         ),
       ),
       const SizedBox(height: 14),
       const Text(
-        'Status is simulated. No ESP32 or Firebase connection is active.',
+        'Sample data is not uploaded to your account.',
         style: TextStyle(color: slate),
       ),
     ],

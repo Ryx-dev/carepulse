@@ -45,7 +45,7 @@ migrate_working_dir/
 /.firebase/
 
 # Symbolication related
-app.*.symbols
+  app.*.symbols
 
 # Obfuscation related
 app.*.map.json

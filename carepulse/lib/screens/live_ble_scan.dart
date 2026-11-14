@@ -11,6 +11,7 @@ import '../models/measurement.dart';
 import '../services/ble_device_transport.dart';
 import '../services/ble_measurement_sync.dart';
 import '../services/ble_protocol.dart';
+import '../services/ble_secure_session.dart';
 import 'pages.dart';
 
 /// A live BLE scan with an authenticated upload of completed results.
@@ -34,13 +35,16 @@ class LiveBleScanScreen extends StatefulWidget {
 class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
   static const _permissions = MethodChannel('carepulse/ble_permissions');
   late final BleDeviceTransport _transport =
-      widget.transport ?? BleDeviceTransport();
+      widget.transport ?? BleDeviceTransport(uid: widget.sync.uid);
   StreamSubscription<DiscoveredDevice>? _discovery;
   StreamSubscription<BleScanEvent>? _events;
   StreamSubscription<bool>? _connection;
   StreamSubscription<BleStatus>? _statusSubscription;
   Timer? _discoveryTimer;
-  Timer? _scanTimer;
+  Timer? _responseTimer;
+  Timer? _cancelTimer;
+  bool _monitoring = false;
+  bool _stopping = false;
   Future<void>? _statusCleanup;
   final Map<String, DiscoveredDevice> _devices = {};
 
@@ -65,6 +69,7 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
   bool _enablingBluetooth = false;
   BleStatus _status = BleStatus.unknown;
   int _operationEpoch = 0;
+  bool _reenterPairingCode = false;
 
   @override
   void initState() {
@@ -79,8 +84,10 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
           _status != BleStatus.ready) {
         return;
       }
-      _scanTimer?.cancel();
+      _responseTimer?.cancel();
+      _cancelTimer?.cancel();
       setState(() {
+        _monitoring = _stopping = false;
         _deviceName = null;
         _scanInProgress = false;
         _requestId = null;
@@ -116,11 +123,13 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
       return;
     }
 
+    _responseTimer?.cancel();
+    _cancelTimer?.cancel();
+    _monitoring = _stopping = false;
     final interrupted = wasReady && _scanInProgress;
     _operationEpoch++;
     _searchOnReady = true;
     _discoveryTimer?.cancel();
-    _scanTimer?.cancel();
     final requestId = _requestId;
     if (requestId != null) _transport.finishScan(requestId);
     final previousCleanup = _statusCleanup;
@@ -292,6 +301,68 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
     }
   }
 
+  Future<String?> _requestPairingCode() async {
+    final controller = TextEditingController();
+    final form = GlobalKey<FormState>();
+    try {
+      return await showDialog<String>(
+        context: context,
+        useRootNavigator: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Pair your sensor'),
+          content: Form(
+            key: form,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Enter the 32-character pairing code from your sensor. '
+                  'Connect the sensor by USB and send PAIR in Serial Monitor to view it.',
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: controller,
+                  autofocus: true,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  keyboardType: TextInputType.visiblePassword,
+                  maxLength: 64,
+                  decoration: const InputDecoration(labelText: 'Sensor pairing code'),
+                  validator: (value) {
+                    try {
+                      BleSecureSession.normalizePairingCode(value ?? '');
+                      return null;
+                    } on FormatException {
+                      return 'Enter all 32 hexadecimal characters.';
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                if (form.currentState!.validate()) {
+                  Navigator.of(dialogContext).pop(
+                    BleSecureSession.normalizePairingCode(controller.text),
+                  );
+                }
+              },
+              child: const Text('Verify sensor'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      // Wait for the dialog route's exit transition before releasing its input.
+      WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
+    }
+  }
+
   Future<void> _connect(DiscoveredDevice device) async {
     if (_status != BleStatus.ready) return;
     final epoch = _operationEpoch;
@@ -307,16 +378,46 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
       if (!mounted || epoch != _operationEpoch || _status != BleStatus.ready) {
         return;
       }
-      await _transport.connect(device.id);
+      Future<void> connectWithCode() async {
+        final code = await _requestPairingCode();
+        if (!mounted || epoch != _operationEpoch || _status != BleStatus.ready) return;
+        if (code == null) {
+          setState(() {
+            _connecting = false;
+            _message = 'Pairing cancelled. Choose your sensor to try again.';
+          });
+          return;
+        }
+        await _transport.connect(device.id, pairingCode: code);
+      }
+      if (_reenterPairingCode) {
+        await connectWithCode();
+      } else {
+        try {
+          await _transport.connect(device.id);
+        } on BlePairingRequiredException {
+          await connectWithCode();
+        }
+      }
       if (!mounted || epoch != _operationEpoch || _status != BleStatus.ready) {
         return;
       }
+      if (!_transport.isConnected) return;
       setState(() {
+        _reenterPairingCode = false;
         _connecting = false;
         _deviceName = device.name.isEmpty ? 'CarePulse' : device.name;
         _deviceId = device.id;
         _message = 'Connected. Place your finger on the sensor, then start.';
       });
+    } on BleAuthenticationException {
+      if (epoch == _operationEpoch && _status == BleStatus.ready) {
+        _reenterPairingCode = true;
+        _showError(
+          'Sensor verification failed. Check the code and update the sensor firmware. '
+          'Tap your sensor again to enter its pairing code.',
+        );
+      }
     } catch (error) {
       if (epoch == _operationEpoch && _status == BleStatus.ready) {
         _showError(
@@ -342,7 +443,52 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
     });
   }
 
-  Future<void> _startScan() async {
+  Future<void> _startScan() => _startOperation(false);
+  Future<void> _startMonitor() => _startOperation(true);
+
+  Future<void> _operationFailure(String message, int epoch) async {
+    if (!mounted || epoch != _operationEpoch || !_scanInProgress) return;
+    _responseTimer?.cancel();
+    _cancelTimer?.cancel();
+    _manualDisconnect = true;
+    try {
+      await _transport.disconnect();
+    } finally {
+      _manualDisconnect = false;
+    }
+    if (!mounted || epoch != _operationEpoch || !_scanInProgress) return;
+    _deviceName = _deviceId = null;
+    _showError(message);
+  }
+
+  Future<void> _cancelOperation() async {
+    final id = _requestId;
+    if (!_scanInProgress || _stopping || id == null) return;
+    final epoch = _operationEpoch;
+    setState(() {
+      _stopping = true;
+      _message = 'Stopping…';
+    });
+    _responseTimer?.cancel();
+    _cancelTimer = Timer(const Duration(seconds: 2), () {
+      unawaited(
+        _operationFailure(
+          'CarePulse could not confirm cancellation. Reconnect before starting again.',
+          epoch,
+        ),
+      );
+    });
+    try {
+      await _transport.cancelOperation(id);
+    } catch (_) {
+      await _operationFailure(
+        'CarePulse could not confirm cancellation. Reconnect before starting again.',
+        epoch,
+      );
+    }
+  }
+
+  Future<void> _startOperation(bool monitor) async {
     if (_status != BleStatus.ready ||
         !_transport.isConnected ||
         _scanInProgress ||
@@ -352,6 +498,8 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
     final epoch = _operationEpoch;
     setState(() {
       _scanInProgress = true;
+      _monitoring = monitor;
+      _stopping = false;
       _error = null;
       _requestId = null;
       _bpm = null;
@@ -362,8 +510,20 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
       _scanBeganAt = DateTime.now();
       _message = 'Sending scan request…';
     });
+    _responseTimer = Timer(const Duration(seconds: 3), () {
+      unawaited(
+        _operationFailure(
+          monitor
+              ? 'CarePulse did not respond. Monitoring requires the updated debug firmware. Reconnect and retry.'
+              : 'CarePulse did not acknowledge the scan. Reconnect and retry.',
+          epoch,
+        ),
+      );
+    });
     try {
-      final requestId = await _transport.startScan();
+      final requestId = await (monitor
+          ? _transport.startMonitor()
+          : _transport.startScan());
       if (!mounted ||
           epoch != _operationEpoch ||
           _status != BleStatus.ready ||
@@ -372,26 +532,33 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
         return;
       }
       _requestId = requestId;
-      _scanTimer = Timer(const Duration(seconds: 20), () {
-        final id = _requestId;
-        if (id != null) _transport.finishScan(id);
-        _showError(
-          'No result arrived from CarePulse. Check the connection and retry.',
-        );
-      });
     } catch (error) {
       if (epoch == _operationEpoch && _status == BleStatus.ready) {
-        _showError('Could not start the scan: $error');
+        await _operationFailure(
+          'Could not start the measurement: $error',
+          epoch,
+        );
       }
     }
   }
 
   void _onEvent(BleScanEvent event) {
     if (!mounted || _status != BleStatus.ready || !_scanInProgress) return;
+    if (_requestId != null && event.requestId != _requestId) return;
+    if (_stopping && event.stage != BleEventStage.cancelled) return;
+    if (_monitoring && event.stage == BleEventStage.complete) return;
+    if (!_monitoring &&
+        (event.stage == BleEventStage.reading ||
+            event.stage == BleEventStage.contactLost ||
+            event.stage == BleEventStage.unavailable)) {
+      return;
+    }
+    _responseTimer?.cancel();
     if (event.stage == BleEventStage.complete ||
         event.stage == BleEventStage.invalid ||
-        event.stage == BleEventStage.error) {
-      _scanTimer?.cancel();
+        event.stage == BleEventStage.error ||
+        event.stage == BleEventStage.cancelled) {
+      _cancelTimer?.cancel();
       _transport.finishScan(event.requestId);
     }
     setState(() {
@@ -400,9 +567,28 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
         case BleEventStage.waiting:
           _message = 'Waiting for your finger (up to 3 seconds)…';
         case BleEventStage.scanning:
-          _message = 'Collecting sensor samples. Keep your finger still.';
+          _message = _monitoring
+              ? 'Monitoring. Keep your finger still.'
+              : 'Collecting sensor samples. Keep your finger still.';
         case BleEventStage.processing:
-          _message = 'Calculating your measurement…';
+          _message = _monitoring
+              ? 'Monitoring. Waiting for valid readings.'
+              : 'Measuring. Keep your finger still; removing it for 3 seconds ends the scan.';
+        case BleEventStage.reading:
+          _bpm = event.bpm;
+          _spo2 = event.spo2;
+          _message = 'Monitoring';
+        case BleEventStage.contactLost:
+          _bpm = _spo2 = null;
+          _message =
+              'Finger contact lost. Return your finger within 3 seconds.';
+        case BleEventStage.unavailable:
+          _bpm = _spo2 = null;
+          _message = 'Monitoring. Waiting for valid readings.';
+        case BleEventStage.cancelled:
+          _scanInProgress = _monitoring = _stopping = false;
+          _bpm = _spo2 = null;
+          _message = 'Measurement cancelled';
         case BleEventStage.complete:
           _scanInProgress = false;
           _bpm = event.bpm;
@@ -412,7 +598,7 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
           final seconds =
               ((DateTime.now().difference(started).inMilliseconds + 999) ~/
                       1000)
-                  .clamp(1, 20);
+                  .clamp(1, 9007199254740991);
           _pendingMeasurement = Measurement(
             id: event.requestId,
             requestId: event.requestId,
@@ -425,12 +611,12 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
             timestamp: DateTime.now(),
           );
         case BleEventStage.invalid:
-          _scanInProgress = false;
+          _scanInProgress = _monitoring = _stopping = false;
+          _bpm = _spo2 = null;
           _error = switch (event.reason) {
             'NF' => 'No finger was detected within 3 seconds.',
             'FR' => 'Finger contact was lost during the scan.',
-            'FS' =>
-              'Not enough steady sensor samples were collected in 10 seconds.',
+            'FS' => 'Not enough steady sensor samples were collected.',
             'SQ' =>
               'The pulse signal was unstable. Keep your finger still and try again.',
             'AR' => 'The sensor could not calculate a valid result. Try again.',
@@ -438,7 +624,8 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
           };
           _message = 'Scan not completed';
         case BleEventStage.error:
-          _scanInProgress = false;
+          _scanInProgress = _monitoring = _stopping = false;
+          _bpm = _spo2 = null;
           _error =
               'CarePulse reported a sensor error. Restart the device and try again.';
           _message = 'Device error';
@@ -499,7 +686,10 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
 
   void _showError(String message) {
     if (!mounted) return;
-    _scanTimer?.cancel();
+    _responseTimer?.cancel();
+    _cancelTimer?.cancel();
+    _monitoring = _stopping = false;
+    if (_pendingMeasurement == null) _bpm = _spo2 = null;
     setState(() {
       _discovering = false;
       _connecting = false;
@@ -511,8 +701,9 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
 
   @override
   void dispose() {
+    _responseTimer?.cancel();
+    _cancelTimer?.cancel();
     _discoveryTimer?.cancel();
-    _scanTimer?.cancel();
     unawaited(_discovery?.cancel());
     unawaited(_events?.cancel());
     unawaited(_connection?.cancel());
@@ -568,25 +759,31 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
                         style: const TextStyle(color: primaryRed),
                       ),
                     ],
-                    if (_bpm != null && _spo2 != null) ...[
+                    if (_monitoring || (_bpm != null && _spo2 != null)) ...[
                       const SizedBox(height: 20),
                       Row(
                         children: [
                           Expanded(
                             child: _Result(
                               label: 'Heart rate',
-                              value: '$_bpm BPM',
+                              value: _bpm == null ? '— BPM' : '$_bpm BPM',
                             ),
                           ),
                           Expanded(
                             child: _Result(
                               label: 'Blood oxygen',
-                              value: '$_spo2%',
+                              value: _spo2 == null ? '— %' : '$_spo2%',
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 14),
+                      if (_monitoring)
+                        const Text(
+                          'Live readings are not saved to history.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: slate),
+                        ),
                       if (_saving)
                         const Text(
                           'Saving on this phone…',
@@ -622,15 +819,65 @@ class _LiveBleScanScreenState extends State<LiveBleScanScreen> {
                       )
                     else if (_status == BleStatus.ready &&
                         _transport.isConnected)
-                      ElevatedButton(
-                        onPressed:
-                            _scanInProgress ||
-                                (_pendingMeasurement != null && !_saved)
-                            ? null
-                            : _startScan,
-                        child: Text(
-                          _bpm == null ? 'Start live scan' : 'Scan again',
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: ElevatedButton(
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontFamily: 'Nunito',
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  onPressed:
+                                      _scanInProgress ||
+                                          (_pendingMeasurement != null &&
+                                              !_saved)
+                                      ? null
+                                      : _startScan,
+                                  child: Text(
+                                    _pendingMeasurement == null
+                                        ? 'Start live scan'
+                                        : 'Scan again',
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size.fromHeight(56),
+                                  ),
+                                  onPressed:
+                                      _scanInProgress ||
+                                          (_pendingMeasurement != null &&
+                                              !_saved)
+                                      ? null
+                                      : _startMonitor,
+                                  child: const Text('Monitor'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (_scanInProgress) ...[
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _stopping || _requestId == null
+                                  ? null
+                                  : _cancelOperation,
+                              icon: const Icon(Icons.stop_circle_outlined),
+                              label: Text(_stopping ? 'Stopping…' : 'Cancel'),
+                            ),
+                          ],
+                        ],
                       )
                     else if (_status == BleStatus.ready ||
                         _status == BleStatus.unauthorized ||

@@ -9,12 +9,14 @@ class ProfileScreen extends StatelessWidget {
     required this.email,
     required this.onSignOut,
     this.signingOut = false,
+    this.demoMode = false,
   });
 
   final String name;
   final String email;
   final VoidCallback onSignOut;
   final bool signingOut;
+  final bool demoMode;
 
   @override
   Widget build(BuildContext context) => ListView(
@@ -90,9 +92,11 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 14),
-      const Text(
-        'Measurements and device status are still demonstration data.',
-        style: TextStyle(color: slate, fontSize: 12),
+      Text(
+        demoMode
+            ? 'Sample readings stay in this session and are not uploaded.'
+            : 'Live measurements are saved on this phone and uploaded when online.',
+        style: const TextStyle(color: slate, fontSize: 12),
       ),
       const SizedBox(height: 24),
       OutlinedButton.icon(

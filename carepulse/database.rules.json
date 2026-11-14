@@ -21,7 +21,7 @@
             "spo2": { ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 0 && newData.val() <= 100" },
             "activity": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 40" },
             "note": { ".validate": "newData.isString() && newData.val().length <= 100" },
-            "scanDuration": { ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 1 && newData.val() <= 20" },
+            "scanDuration": { ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 1 && newData.val() <= 9007199254740991" },
             "timestamp": { ".validate": "newData.isNumber() && newData.val() % 1 === 0 && newData.val() >= 1577836800000 && newData.val() <= now + 300000" },
             "$other": { ".validate": false }
           }

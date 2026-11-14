@@ -10,6 +10,10 @@ import 'pending_measurement_store.dart';
 
 /// Keeps completed scans on the device until the account upload succeeds.
 class BleMeasurementSync extends ChangeNotifier with WidgetsBindingObserver {
+  // A replacement session must wait for an old session's already-started
+  // secure-storage write before loading its queue for the same account.
+  static final Map<String, Future<void>> _storageOperations = {};
+
   BleMeasurementSync({
     required this.uid,
     PendingMeasurementStorage? store,
@@ -60,16 +64,20 @@ class BleMeasurementSync extends ChangeNotifier with WidgetsBindingObserver {
   bool contains(String requestId) =>
       _pending.any((item) => item.requestId == requestId);
 
-  Future<void> initialize() => _ready ??= _initialize().catchError((Object error) {
-    _ready = null;
-    _lastError = error;
-    if (!_disposed) notifyListeners();
-    throw error;
-  });
+  Future<void> initialize() {
+    if (_disposed) return Future.error(StateError('Measurement session ended.'));
+    return _ready ??= _initialize().catchError((Object error) {
+      _ready = null;
+      _lastError = error;
+      if (!_disposed) notifyListeners();
+      throw error;
+    });
+  }
 
   Future<void> _initialize() async {
-    _pending = await _store.load(uid);
+    final pending = await _accessStorage(() => _store.load(uid));
     if (_disposed) return;
+    _pending = pending;
     notifyListeners();
     WidgetsBinding.instance.addObserver(this);
     _connectivity = _connectivityChanges.listen((types) {
@@ -111,21 +119,45 @@ class BleMeasurementSync extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _commit(
     List<Measurement> Function(List<Measurement>) change,
   ) {
-    final result = _mutation.then((_) async {
-      final next = change(_pending);
-      await _store.save(uid, next);
-      _pending = next;
-      if (!_disposed) notifyListeners();
-    });
+    final result = _mutation.then(
+      (_) => _accessStorage(() async {
+        if (_disposed) throw StateError('Measurement session ended.');
+        final next = change(_pending);
+        await _store.save(uid, next);
+        _pending = next;
+        if (!_disposed) notifyListeners();
+      }),
+    );
     _mutation = result.catchError((Object _) {});
     return result;
   }
 
+  Future<T> _accessStorage<T>(Future<T> Function() operation) {
+    final previous = _storageOperations[uid] ?? Future<void>.value();
+    final result = previous.then((_) => operation());
+    final drained = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    _storageOperations[uid] = drained;
+    unawaited(drained.then((_) {
+      if (identical(_storageOperations[uid], drained)) {
+        _storageOperations.remove(uid);
+      }
+    }));
+    return result;
+  }
+
   Future<void> retry() async {
-    await initialize();
-    if (_disposed || _pending.isEmpty) return;
+    if (_disposed) return;
+    try {
+      await initialize();
+    } catch (_) {
+      // Connectivity and lifecycle callbacks retry in the background. Keep a
+      // storage read failure in lastError instead of emitting an unhandled error.
+      return;
+    }
+    if (_disposed) return;
     final active = _syncing;
     if (active != null) return active;
+    if (_pending.isEmpty) return;
     final work = _flush();
     _syncing = work;
     notifyListeners();
@@ -153,6 +185,9 @@ class BleMeasurementSync extends ChangeNotifier with WidgetsBindingObserver {
         } else {
           await _uploader!.save(measurement, uid: uid);
         }
+        // A new session may already have loaded this account's queue. Never let
+        // the old session overwrite it after its upload finishes.
+        if (_disposed) return;
         await _commit((current) => current
             .where((item) => item.requestId != measurement.requestId)
             .toList());

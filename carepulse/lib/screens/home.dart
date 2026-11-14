@@ -42,10 +42,12 @@ class _HomeShellState extends State<HomeShell> {
   String contextName = 'Resting';
   int tab = 0;
   bool signingOut = false;
+  bool simulationEnabled = false;
   StreamSubscription<List<Measurement>>? _liveSubscription;
   List<Measurement> _liveMeasurements = const [];
   bool _historyError = false;
   MockDataService get data => widget.data;
+  bool get demoMode => widget.uid == null || simulationEnabled;
   bool get supportsLiveScan =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
@@ -159,6 +161,14 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  void setSimulation(bool enabled) {
+    if (simulationEnabled == enabled) return;
+    setState(() {
+      simulationEnabled = enabled;
+      tab = 0;
+    });
+  }
+
   Future<void> signOut() async {
     if (signingOut || widget.onSignOut == null) return;
     setState(() => signingOut = true);
@@ -200,24 +210,21 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ),
       actions: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-          decoration: BoxDecoration(
-            color: primaryRed.withValues(alpha: 0.06),
-            borderRadius: BorderRadius.circular(99),
-            border: Border.all(color: primaryRed.withValues(alpha: 0.12)),
-          ),
-          child: Text(
-            widget.uid == null ? 'DEMO DATA' : 'LIVE SCAN',
-            style: const TextStyle(
-              fontSize: 10,
-              letterSpacing: 0.4,
-              color: slate,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ),
+       
         const SizedBox(width: 6),
+        if (widget.uid != null)
+          PopupMenuButton<bool>(
+            tooltip: 'Measurement mode',
+            icon: const Icon(Icons.tune_rounded),
+            onSelected: setSimulation,
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: true,
+                child: Text('Preview scan flow'),
+              ),
+              const PopupMenuItem(value: false, child: Text('Use live device')),
+            ],
+          ),
         IconButton(
           tooltip: 'Profile',
           onPressed: () => setState(() => tab = 3),
@@ -228,7 +235,7 @@ class _HomeShellState extends State<HomeShell> {
     ),
     body: switch (tab) {
       0 =>
-        widget.uid == null
+        demoMode
             ? homePage(context)
             : homePage(
                 context,
@@ -236,7 +243,7 @@ class _HomeShellState extends State<HomeShell> {
                 historyError: _historyError,
               ),
       1 =>
-        widget.uid == null
+        demoMode
             ? HistoryScreen(data: data, onDetails: openDetails)
             : LiveHistoryScreen(
                 uid: widget.uid!,
@@ -245,7 +252,7 @@ class _HomeShellState extends State<HomeShell> {
                     openDetails(measurement, demo: false),
               ),
       2 =>
-        widget.uid == null
+        demoMode
             ? DeviceScreen(device: data.device)
             : LiveDeviceScreen(
                 onConnect: openLiveScan,
@@ -256,6 +263,7 @@ class _HomeShellState extends State<HomeShell> {
         email: widget.email,
         onSignOut: signOut,
         signingOut: signingOut,
+        demoMode: demoMode,
       ),
     },
     bottomNavigationBar: NavigationBar(
@@ -287,7 +295,7 @@ class _HomeShellState extends State<HomeShell> {
     List<Measurement>? measurements,
     bool historyError = false,
   }) {
-    final visibleMeasurements = widget.uid == null
+    final visibleMeasurements = demoMode
         ? data.measurements
         : (<Measurement>[
             ...widget.sync!.pending,
@@ -325,13 +333,13 @@ class _HomeShellState extends State<HomeShell> {
               ),
               const SizedBox(height: 4),
               Text(
-                widget.uid == null
-                    ? 'Demo readings at a glance'
+                demoMode
+                    ? 'Your CarePulse overview'
                     : 'Your saved CarePulse readings',
                 style: const TextStyle(fontSize: 14, color: slate),
               ),
               const SizedBox(height: 24),
-              if (widget.uid != null && widget.sync!.pendingCount > 0) ...[
+              if (!demoMode && widget.sync!.pendingCount > 0) ...[
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
@@ -365,7 +373,7 @@ class _HomeShellState extends State<HomeShell> {
                 ),
                 const SizedBox(height: 12),
               ],
-              if (widget.uid == null)
+              if (demoMode)
                 Card(
                   margin: EdgeInsets.zero,
                   child: Padding(
@@ -395,7 +403,7 @@ class _HomeShellState extends State<HomeShell> {
                               ),
                               Text(
                                 data.device.online
-                                    ? 'Connected · $stateLabel'
+                                    ? 'Sample device · $stateLabel'
                                     : 'Disconnected',
                                 style: const TextStyle(
                                   fontSize: 15,
@@ -436,9 +444,7 @@ class _HomeShellState extends State<HomeShell> {
                 ),
               const SizedBox(height: 28),
               Text(
-                widget.uid == null
-                    ? 'Latest demo measurement'
-                    : 'Latest measurement',
+                'Latest measurement',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: deepSlate,
@@ -461,7 +467,7 @@ class _HomeShellState extends State<HomeShell> {
                   child: Padding(
                     padding: EdgeInsets.all(20),
                     child: Text(
-                      widget.uid == null
+                      demoMode
                           ? 'No scans yet. Start a measurement to add one.'
                           : 'No saved scans yet. Start a live measurement.',
                     ),
@@ -472,7 +478,7 @@ class _HomeShellState extends State<HomeShell> {
                   margin: EdgeInsets.zero,
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
-                    onTap: () => openDetails(latest, demo: widget.uid == null),
+                    onTap: () => openDetails(latest, demo: demoMode),
                     child: Padding(
                       padding: const EdgeInsets.all(20),
                       child: Column(
@@ -526,7 +532,29 @@ class _HomeShellState extends State<HomeShell> {
                 ),
               ),
               const SizedBox(height: 10),
-              if (widget.uid != null && supportsLiveScan) ...[
+              if (!demoMode && widget.uid != null) ...[
+                Card(
+                  margin: EdgeInsets.zero,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Explore the scan flow with sample readings.',
+                        ),
+                        const SizedBox(height: 10),
+                        OutlinedButton(
+                          onPressed: () => setSimulation(true),
+                          child: const Text('Preview scan flow'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
+              if (!demoMode && supportsLiveScan) ...[
                 Card(
                   margin: EdgeInsets.zero,
                   child: Padding(
@@ -598,7 +626,7 @@ class _HomeShellState extends State<HomeShell> {
                 ),
                 const SizedBox(height: 14),
               ],
-              if (widget.uid != null && !supportsLiveScan)
+              if (!demoMode && !supportsLiveScan)
                 const Card(
                   margin: EdgeInsets.zero,
                   child: Padding(
@@ -609,7 +637,7 @@ class _HomeShellState extends State<HomeShell> {
                     ),
                   ),
                 ),
-              if (widget.uid == null)
+              if (demoMode)
                 Card(
                   margin: EdgeInsets.zero,
                   child: Padding(
@@ -673,7 +701,7 @@ class _HomeShellState extends State<HomeShell> {
                         ),
                         const SizedBox(height: 2),
                         const Text(
-                          'Place your finger on the MAX30102 sensor and keep it still during the measurement.',
+                          'Keep still during the measurement.',
                           style: TextStyle(
                             color: slate,
                             fontSize: 13,
@@ -708,12 +736,6 @@ class _HomeShellState extends State<HomeShell> {
                                 )
                               : const Text('Start measurement'),
                         ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Demo mode · Fixed sample data',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 11, color: slate),
-                        ),
                       ],
                     ),
                   ),
@@ -746,8 +768,7 @@ class _HomeShellState extends State<HomeShell> {
                   .map(
                     (measurement) => MeasurementRow(
                       measurement: measurement,
-                      onTap: () =>
-                          openDetails(measurement, demo: widget.uid == null),
+                      onTap: () => openDetails(measurement, demo: demoMode),
                     ),
                   ),
               const SizedBox(height: 20),

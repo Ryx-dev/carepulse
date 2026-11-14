@@ -65,7 +65,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Your overview'), findsOneWidget);
     expect(find.text('Home'), findsOneWidget);
-    expect(find.text('DEMO DATA'), findsOneWidget);
+    expect(find.text('SAMPLE DATA'), findsOneWidget);
 
     await tester.tap(find.text('Profile'));
     await tester.pumpAndSettle();
@@ -339,10 +339,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(data.stage, ScanStage.complete);
     expect(find.text('Scan complete'), findsOneWidget);
-    expect(
-      find.text('This is a fixed demo result, not a sensor reading.'),
-      findsOneWidget,
-    );
+    expect(find.text('Sample result'), findsOneWidget);
 
     final completed = data.latest!;
     expect(data.measurements, hasLength(5));
@@ -356,7 +353,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView).first, const Offset(0, 600));
     await tester.pumpAndSettle();
-    expect(find.text('Latest demo measurement'), findsOneWidget);
+    expect(find.text('Latest measurement'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(Card).at(1),

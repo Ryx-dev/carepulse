@@ -1,7 +1,31 @@
 # CarePulse ESP32 prototype
 
+## Standalone BPM and SpO2 sketch
+
+Open [`carepulse_bpm_spo2/carepulse_bpm_spo2.ino`](carepulse_bpm_spo2/carepulse_bpm_spo2.ino)
+for a separate **ESP32 + MAX30102** sketch that measures BPM and SpO2 through
+Serial Monitor. It only needs the sensor; BLE, external LEDs, and the buzzer
+are omitted. The original firmware is unchanged.
+
+Install the Espressif **esp32** board package and **SparkFun MAX3010x Pulse and
+Proximity Sensor Library**, select **ESP32 Dev Module**, and upload the sketch.
+Use the sensor wiring below: SDA **GPIO18**, SCL **GPIO19**, and common GND.
+Use 3V3 power only for a breakout rated for that input.
+
+Open Serial Monitor at **9600 baud** with **Newline** enabled. Keep your finger
+steady on the sensor, send `SCAN`, and wait up to 10 seconds. Accepted results
+print `state=complete bpm=... spo2=...`; rejected readings print a reason.
+Send `SCAN` again for another measurement.
+
+The sketch retains contact calibration (`CAL EMPTY`, then `CAL FINGER`, and
+`CAL RESET`) and the original timing, signal-quality, and two-window checks.
+It shares the saved contact threshold with the main sketch on the same ESP32;
+calibration changes therefore apply to both. Follow the calibration instructions
+below. Calibration detects contact and does not establish measurement accuracy.
+This is a prototype estimate, not a medical diagnostic device.
+
 This sketch tests an **ESP32 Dev Module (classic ESP32)** with a MAX30102 over
-USB Serial. It gives each scan up to 10 seconds from the `SCAN` command, reports a BPM
+USB Serial. It gives each scan up to 15 seconds from the `SCAN` command, reports a BPM
 and SpO2 estimate only when the library accepts both values, and drives status
 LEDs and a passive piezo buzzer. It does not connect to Wi-Fi, Firebase, or the
 Flutter app's demo history. A separate Node USB gateway can relay scan requests
@@ -65,33 +89,36 @@ housing; do it again if the sensor position or cover changes.
 
 The threshold is saved on the ESP32. It only detects finger contact; it does
 not calibrate BPM or SpO2 accuracy. `SIGNAL_QUALITY` and `ALGORITHM` lines
-appear after a full scan and show sampling, signal range, and two heart-rate
-estimates. A scan now needs 125 consecutive samples so two overlapping
-four-second windows can agree before a result is saved. Timing outside 22–28
-samples per second, a flat or saturated IR signal, or inconsistent estimates
-returns an invalid scan. These checks can reject some good scans; they cannot
-prove that an accepted result is accurate. Compare several still-finger scans
+appear after a full scan and show sampling, signal range, and the calculated
+readings. The main app sketch collects 100 consecutive pairs and calls the
+library once, using a four-second window. It reports the library results
+directly after validity and bounds checks, with no second window or averaging.
+The main app sketch logs sampling rate and IR range for diagnostics, but does
+not reject scans for collection rate, IR saturation, or low IR variation.
+Contact checks, sample count, timeouts, algorithm validity, and result bounds
+still apply. The library assumes 25 samples per second; passing the remaining
+checks cannot prove that a result is accurate. Compare several still-finger scans
 with a reference pulse measurement before relying on a result. Do not change
 the BPM limit merely to hide a high reading.
 
 Enable `DEBUG_RAW_DATA` only for deeper diagnostics. Printing every raw sample
-at 9600 baud can consume the 10-second allowance. Leave it `false` for normal
+at 9600 baud can consume the main sketch's 15-second allowance. Leave it `false` for normal
 scans.
 This is a prototype
 estimate for personal logging; it is not a medical diagnostic device.
 
 Finger confirmation must happen within the first 3 seconds. Contact then gets
-1 second to settle. The sketch collects 125 consecutive valid RED/IR pairs and
-finishes as soon as it has them; 10 seconds is the total deadline, including
+1 second to settle. The main app sketch collects 100 consecutive valid RED/IR pairs and
+finishes as soon as it has them; 15 seconds is the total deadline, including
 finger acquisition and settling. Contact below the threshold for 3 continuous
 seconds ends the scan with `finger_removed`. A shorter loss resets the sample
 buffer and settling period when contact returns. If the deadline arrives before
-125 pairs are collected, the scan ends with `too_few_samples`. `SCAN_SUMMARY`
+100 pairs are collected, the scan ends with `too_few_samples`. `SCAN_SUMMARY`
 reports collection duration, total received samples, valid contact samples,
 `collected_samples` in the current uninterrupted batch, and received samples
 per second. Valid contact samples during settling, or before a contact loss,
-do not count toward the required 125 collected samples. The unchanged SparkFun
-algorithm runs on two overlapping windows of **100 collected red/IR pairs**.
+do not count toward the required 100 collected samples. The unchanged SparkFun
+algorithm runs once on **100 collected red/IR pairs** in the main app sketch.
 
 The sketch also accepts `SCAN <requestId>` for the USB gateway. It includes the
 same ID in progress and terminal Serial lines, and refuses the same ID twice
@@ -102,19 +129,42 @@ and live Flutter data wiring.
 
 ## BLE connection and scan transport
 
-The sketch advertises a `CarePulse` BLE service while no phone is connected.
-Select it in the app to connect without entering a code. A short `P` / `T`
-exchange confirms that notifications are ready before scans are enabled. The
-ESP32 accepts scan commands from the connected phone, stops advertising during
-that connection, and advertises again after it disconnects. The app has a
-**Disconnect** action to release the device. A dropped BLE connection also
-releases it.
+The mobile BLE firmware is
+[`carepulse_single_scan_debug/carepulse_single_scan_debug.ino`](carepulse_single_scan_debug/carepulse_single_scan_debug.ino).
+Upload this updated sketch manually before using the updated app. Older BLE
+firmware's plaintext handshake is rejected by the app.
 
-This is temporary access for the connected phone, not permanent ownership or
-authenticated Bluetooth pairing. Any nearby phone using the CarePulse protocol
-can connect when the device is free. The BLE link and measurement notifications
-are not encrypted by this application protocol. Use the device only where that
-tradeoff is acceptable.
+Each board generates a random 128-bit pairing key once and saves it in ESP32
+nonvolatile storage. To pair a phone:
+
+1. Connect the board to a trusted computer over physical USB. Open Serial
+   Monitor at **9600 baud**, with **Newline** enabled.
+2. When no scan is running, send `PAIR`. The board prints its 32 hexadecimal
+   character key on a single line. This also works when the sensor is missing.
+3. Select the `CarePulse` device in the app and enter that key in the pairing
+   prompt. Treat it as a password; do not include it in screenshots, support
+   logs, source code, or uploaded readings. Only a trusted physical USB
+   connection can retrieve the key; BLE cannot request it.
+
+The board and app exchange fresh random nonces and derive separate transmit
+and receive keys with HMAC-SHA256. All commands, readiness checks, progress,
+and readings then use AES-128-GCM with a full authentication tag and strictly
+increasing counters. The app verifies the board's encrypted response before
+enabling scans. A phone without the pairing key cannot issue scan commands or
+read measurement notifications. This application pairing does not create an
+operating-system Bluetooth bond.
+
+The board stops advertising during a connection and advertises again after
+the connection and any old scan have ended. Invalid, tampered, replayed, or
+out-of-order frames close the connection. An unfinished handshake times out
+after 20 seconds; an authenticated connection with no active scan and no
+activity times out after 120 seconds. Monitoring remains connected while its
+scan is active. The app's **Disconnect** action also releases the device.
+
+BLE is disabled if key storage or the firmware's deterministic cryptographic
+self-test fails. Erasing ESP32 nonvolatile storage creates a different key on
+the next successful initialization, so phones must pair again. Anyone with
+physical USB access or a copy of the pairing key can authorize another client.
 
 The firmware sends request-correlated progress and
 terminal notifications through the event characteristic; the UUIDs and frame
@@ -127,7 +177,9 @@ stores completed results on the phone and retries authenticated writes to
 Firebase account history. The database rules are deployed to the development
 project, and one phone upload and history read succeeded. The tap-to-connect
 change was checked on a Samsung SM-A135F and the ESP32: discovery, connection
-without a code, Disconnect, and reconnection all worked.
+without a code, Disconnect, and reconnection all worked on the prior plaintext
+firmware. The new authenticated protocol still needs a manual firmware upload
+and an end-to-end test on the phone and board.
 On the previous firmware flash to the connected board, USB Serial reported
 `max30102_not_found`. BLE still starts and can report a sensor error, but the
 MAX30102 power, ground, SDA (GPIO 18), and SCL (GPIO 19) wiring must be checked

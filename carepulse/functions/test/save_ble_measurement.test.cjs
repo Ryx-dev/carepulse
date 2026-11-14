@@ -22,7 +22,7 @@ test('authenticated BLE result is saved once under its owner and retries are ide
   });
   const request = { authorization: 'Bearer alice-token', body: {
     requestId: 'A1B2C3D4', deviceId: 'AA:BB:CC:DD:EE:FF', bpm: 78,
-    spo2: 98, activity: 'Resting', note: 'Morning', scanDuration: 6,
+    spo2: 98, activity: 'Resting', note: 'Morning', scanDuration: 150,
     timestamp: 1_790_000_000_000,
   } };
   const expected = { requestId: 'A1B2C3D4', timestamp: 1_790_000_000_000 };
@@ -33,5 +33,8 @@ test('authenticated BLE result is saved once under its owner and retries are ide
   await assert.rejects(save({ ...request, authorization: 'Bearer wrong' }), { status: 401 });
   await assert.rejects(save({ ...request, body: { ...request.body, spo2: 101 } }), { status: 400 });
   await assert.rejects(save({ ...request, body: { ...request.body, bpm: 79 } }), { status: 409 });
+  for (const scanDuration of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(save({ ...request, body: { ...request.body, scanDuration } }), { status: 400 });
+  }
   assert.equal(records.size, 1);
 });

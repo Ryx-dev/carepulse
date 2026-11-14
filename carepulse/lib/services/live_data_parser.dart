@@ -27,7 +27,7 @@ class LiveDataParser {
           id: requestId,
           requestId: requestId,
           deviceId: _nonEmptyString(data['deviceId'], 'deviceId'),
-          bpm: _wholeNumber(data['bpm'], 'bpm', min: 1, max: 300),
+          bpm: _wholeNumber(data['bpm'], 'bpm', min: 1, max: 250),
           spo2: _wholeNumber(data['spo2'], 'spo2', min: 0, max: 100),
           activity: activity,
           note: note,
@@ -35,7 +35,7 @@ class LiveDataParser {
             data['scanDuration'],
             'scanDuration',
             min: 1,
-            max: 120,
+            max: 9007199254740991,
           ),
           timestamp: _timestamp(data['timestamp'], 'timestamp'),
         ),
@@ -85,7 +85,12 @@ class LiveDataParser {
   }
 
   DateTime _timestamp(Object? value, String field) {
-    final millis = _wholeNumber(value, field, min: 1);
+    final millis = _wholeNumber(
+      value,
+      field,
+      min: 1,
+      max: 8640000000000000,
+    );
     return DateTime.fromMillisecondsSinceEpoch(millis);
   }
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../models/measurement.dart';
+import 'live_data_parser.dart';
 
 abstract class PendingMeasurementStorage {
   Future<List<Measurement>> load(String uid);
@@ -15,6 +16,7 @@ class PendingMeasurementStore implements PendingMeasurementStorage {
     : _storage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
+  final LiveDataParser _parser = const LiveDataParser();
 
   String _key(String uid) => 'pending_ble_v1_$uid';
 
@@ -24,33 +26,17 @@ class PendingMeasurementStore implements PendingMeasurementStorage {
     if (raw == null) return [];
     final decoded = jsonDecode(raw);
     if (decoded is! List) throw const FormatException('Invalid pending scans');
+    final seen = <String>{};
     return decoded.map((item) {
       if (item is! Map) throw const FormatException('Invalid pending scan');
       final data = Map<String, Object?>.from(item);
       final requestId = data['requestId'];
-      final deviceId = data['deviceId'];
-      final bpm = data['bpm'];
-      final spo2 = data['spo2'];
-      final activity = data['activity'];
-      final note = data['note'];
-      final duration = data['scanDuration'];
-      final timestamp = data['timestamp'];
-      if (requestId is! String || deviceId is! String || bpm is! int ||
-          spo2 is! int || activity is! String || note is! String ||
-          duration is! int || timestamp is! int) {
+      if (requestId is! String || !seen.add(requestId)) {
         throw const FormatException('Invalid pending scan');
       }
-      return Measurement(
-        id: requestId,
-        requestId: requestId,
-        deviceId: deviceId,
-        bpm: bpm,
-        spo2: spo2,
-        activity: activity,
-        note: note,
-        scanDurationSeconds: duration,
-        timestamp: DateTime.fromMillisecondsSinceEpoch(timestamp),
-      );
+      // Apply the same value bounds as cloud history before showing or retrying
+      // a saved result. Preserve the source if any record is damaged.
+      return _parser.measurements({requestId: data}).single;
     }).toList();
   }
 

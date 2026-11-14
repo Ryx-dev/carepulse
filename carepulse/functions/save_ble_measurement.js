@@ -24,7 +24,7 @@ function validBody(body, now = Date.now()) {
       !Number.isInteger(spo2) || spo2 < 0 || spo2 > 100 ||
       typeof activity !== 'string' || activity.trim().length < 1 || activity.length > 40 ||
       typeof note !== 'string' || note.length > 100 ||
-      !Number.isInteger(scanDuration) || scanDuration < 1 || scanDuration > 20 ||
+      !Number.isSafeInteger(scanDuration) || scanDuration < 1 ||
       !Number.isSafeInteger(timestamp) || timestamp < 1577836800000 ||
       timestamp > now + 300000) {
     reject(400, 'Invalid measurement.');

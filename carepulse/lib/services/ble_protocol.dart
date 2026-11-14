@@ -14,6 +14,15 @@ class BleProtocol {
     return 'S|$requestId';
   }
 
+  static String monitorCommand(String requestId) => _command('M', requestId);
+  static String cancelCommand(String requestId) => _command('X', requestId);
+  static String _command(String command, String requestId) {
+    if (!_id.hasMatch(requestId)) {
+      throw const FormatException('Invalid request ID');
+    }
+    return '$command|$requestId';
+  }
+
   static BleScanEvent? parseEvent(String frame) {
     if (frame.length > 20) return null;
     final parts = frame.split('|');
@@ -26,6 +35,13 @@ class BleProtocol {
         return BleScanEvent(id, BleEventStage.scanning);
       case 'P' when parts.length == 2:
         return BleScanEvent(id, BleEventStage.processing);
+      case 'F' when parts.length == 2:
+        return BleScanEvent(id, BleEventStage.contactLost);
+      case 'U' when parts.length == 2:
+        return BleScanEvent(id, BleEventStage.unavailable);
+      case 'A' when parts.length == 2:
+        return BleScanEvent(id, BleEventStage.cancelled);
+      case 'V' when parts.length == 4:
       case 'C' when parts.length == 4:
         final bpm = int.tryParse(parts[2]);
         final spo2 = int.tryParse(parts[3]);
@@ -37,7 +53,12 @@ class BleProtocol {
             spo2 > 100) {
           return null;
         }
-        return BleScanEvent(id, BleEventStage.complete, bpm: bpm, spo2: spo2);
+        return BleScanEvent(
+          id,
+          parts[0] == 'V' ? BleEventStage.reading : BleEventStage.complete,
+          bpm: bpm,
+          spo2: spo2,
+        );
       case 'I' when parts.length == 3:
         return BleScanEvent(id, BleEventStage.invalid, reason: parts[2]);
       case 'E' when parts.length == 3:
@@ -47,7 +68,18 @@ class BleProtocol {
   }
 }
 
-enum BleEventStage { waiting, scanning, processing, complete, invalid, error }
+enum BleEventStage {
+  waiting,
+  scanning,
+  processing,
+  complete,
+  invalid,
+  error,
+  reading,
+  contactLost,
+  unavailable,
+  cancelled,
+}
 
 class BleScanEvent {
   const BleScanEvent(

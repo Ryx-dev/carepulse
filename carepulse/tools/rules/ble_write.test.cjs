@@ -29,7 +29,7 @@ test('BLE measurement writes are owner scoped and validated', async (t) => {
   const ref = alice.ref('users/alice/measurements/A1B2C3D4');
   const result = {
     requestId: 'A1B2C3D4', deviceId: 'carepulse_1', bpm: 78, spo2: 98,
-    activity: 'Resting', note: '', scanDuration: 6,
+    activity: 'Resting', note: '', scanDuration: 150,
     timestamp: Date.now() - 1000,
   };
 

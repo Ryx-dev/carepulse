@@ -30,7 +30,7 @@ class MockDataService extends ChangeNotifier {
     name: 'CarePulse Device',
     online: true,
     state: 'ready',
-    sensorStatus: 'MAX30102 connected',
+    sensorStatus: 'Sample sensor',
     lastSeen: DateTime(2026, 9, 26, 9, 46),
   );
   final List<Measurement> measurements = [
@@ -83,6 +83,7 @@ class MockDataService extends ChangeNotifier {
   int secondsRemaining = scanDurationSeconds;
   String? requestId;
   Timer? _timer;
+  int _simulatedScanCount = 0;
 
   Measurement? get latest => measurements.isEmpty ? null : measurements.first;
   bool get canScan =>
@@ -111,14 +112,15 @@ class MockDataService extends ChangeNotifier {
           _timer = Timer(const Duration(seconds: 1), () {
             _setStage(ScanStage.uploading);
             _timer = Timer(const Duration(milliseconds: 500), () {
+              final sample = _simulatedScanCount++ % 4;
               measurements.insert(
                 0,
                 Measurement(
                   id: requestId!,
                   requestId: requestId!,
                   deviceId: device.id,
-                  bpm: 78,
-                  spo2: 98,
+                  bpm: [78, 82, 76, 80][sample],
+                  spo2: [98, 97, 99, 98][sample],
                   activity: activity,
                   note: note.trim(),
                   scanDurationSeconds: scanDurationSeconds,

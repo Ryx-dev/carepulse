@@ -15,7 +15,7 @@ void main() {
           'spo2': 98,
           'activity': 'Resting',
           'note': 'Morning',
-          'scanDuration': 15,
+          'scanDuration': 150,
           'timestamp': 1760000000000,
         },
         'scan_new': {
@@ -25,7 +25,7 @@ void main() {
           'spo2': 97,
           'activity': 'After warm-up',
           'note': 'Felt calm',
-          'scanDuration': 15,
+          'scanDuration': 150,
           'timestamp': 1760000015000,
         },
       });
@@ -33,6 +33,7 @@ void main() {
       expect(records.map((record) => record.id), ['scan_new', 'scan_old']);
       expect(records.first.activity, 'After warm-up');
       expect(records.first.note, 'Felt calm');
+      expect(records.first.scanDurationSeconds, 150);
       expect(records.first.timestamp.millisecondsSinceEpoch, 1760000015000);
     },
   );
@@ -47,7 +48,7 @@ void main() {
           'bpm': 78,
           'spo2': 98,
           'activity': 'Resting',
-          'scanDuration': 15,
+          'scanDuration': 150,
           'timestamp': 1760000000000,
         },
       }),
@@ -61,7 +62,7 @@ void main() {
           'bpm': '78',
           'spo2': 98,
           'activity': 'Resting',
-          'scanDuration': 15,
+          'scanDuration': 150,
           'timestamp': 1760000000000,
         },
       }),
@@ -83,4 +84,37 @@ void main() {
       expect(device.lastSeen, isNull);
     },
   );
+
+  test('rejects impossible readings and out-of-range timestamps', () {
+    final record = <String, Object?>{
+      'requestId': 'A1B2C3D4',
+      'deviceId': 'carepulse_001',
+      'bpm': 78,
+      'spo2': 98,
+      'activity': 'Resting',
+      'note': '',
+      'scanDuration': 150,
+      'timestamp': 1760000000000,
+    };
+    for (final invalid in [
+      {'bpm': 251},
+      {'timestamp': 8640000000000001},
+      {'timestamp': double.infinity},
+    ]) {
+      expect(
+        () => parser.measurements({'A1B2C3D4': {...record, ...invalid}}),
+        throwsFormatException,
+      );
+    }
+    expect(
+      () => parser.device('carepulse_001', {
+        'name': 'CarePulse',
+        'online': true,
+        'state': 'ready',
+        'sensorStatus': 'connected',
+        'lastSeen': 8640000000000001,
+      }),
+      throwsFormatException,
+    );
+  });
 }

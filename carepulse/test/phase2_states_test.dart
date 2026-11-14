@@ -94,7 +94,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('offline scan screen explains how to reconnect', (tester) async {
+  testWidgets('offline scan screen reports unavailable device', (tester) async {
     final service = MockDataService()..stage = ScanStage.offline;
     addTearDown(service.dispose);
 
@@ -106,10 +106,7 @@ void main() {
     );
 
     expect(find.text('Device offline'), findsOneWidget);
-    expect(
-      find.text('Connect the device to Wi-Fi before starting a scan.'),
-      findsOneWidget,
-    );
+    expect(find.text('Device unavailable.'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(tester.takeException(), isNull);
   });

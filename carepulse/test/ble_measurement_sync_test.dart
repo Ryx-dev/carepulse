@@ -9,14 +9,32 @@ import 'package:flutter_test/flutter_test.dart';
 class MemoryStore implements PendingMeasurementStorage {
   final Map<String, List<Measurement>> values = {};
   bool failWrites = false;
+  bool failReads = false;
 
   @override
-  Future<List<Measurement>> load(String uid) async => [...?values[uid]];
+  Future<List<Measurement>> load(String uid) async {
+    if (failReads) throw StateError('storage unavailable');
+    return [...?values[uid]];
+  }
 
   @override
   Future<void> save(String uid, List<Measurement> measurements) async {
     if (failWrites) throw StateError('storage unavailable');
     values[uid] = [...measurements];
+  }
+}
+
+class DelayedWriteStore extends MemoryStore {
+  final writeStarted = Completer<void>();
+  final allowWrite = Completer<void>();
+
+  @override
+  Future<void> save(String uid, List<Measurement> measurements) async {
+    if (!writeStarted.isCompleted) {
+      writeStarted.complete();
+      await allowWrite.future;
+    }
+    await super.save(uid, measurements);
   }
 }
 
@@ -174,6 +192,101 @@ void main() {
     expect(uploads, 0);
     expect(sync.pendingCount, 0);
     sync.dispose();
+    await network.close();
+  });
+
+  test('an upload completing after sign-out cannot erase a new queue', () async {
+    final store = MemoryStore()..values['alice'] = [scan('AAAAAAAA')];
+    final network = StreamController<List<ConnectivityResult>>.broadcast();
+    final uploading = Completer<void>();
+    final completed = Completer<void>();
+    final first = BleMeasurementSync(
+      uid: 'alice',
+      store: store,
+      upload: (_) {
+        uploading.complete();
+        return completed.future;
+      },
+      connectivityChanges: network.stream,
+    );
+    await first.initialize();
+    final previousUpload = first.retry();
+    await uploading.future;
+    first.dispose();
+
+    final second = BleMeasurementSync(
+      uid: 'alice',
+      store: store,
+      upload: (_) async => throw StateError('offline'),
+      connectivityChanges: network.stream,
+    );
+    await second.enqueue(scan('BBBBBBBB'));
+    completed.complete();
+    await previousUpload;
+
+    expect(
+      store.values['alice']!.map((measurement) => measurement.requestId),
+      containsAll(['AAAAAAAA', 'BBBBBBBB']),
+    );
+    second.dispose();
+    await network.close();
+  });
+
+  test('retry records a local read failure and can recover later', () async {
+    final store = MemoryStore()..failReads = true;
+    final network = StreamController<List<ConnectivityResult>>.broadcast();
+    final uploads = <String>[];
+    final sync = BleMeasurementSync(
+      uid: 'alice',
+      store: store,
+      upload: (measurement) async => uploads.add(measurement.requestId),
+      connectivityChanges: network.stream,
+    );
+
+    await sync.retry();
+    expect(sync.lastError, isA<StateError>());
+    expect(uploads, isEmpty);
+
+    store.failReads = false;
+    await sync.enqueue(scan('AAAAAAAA'));
+    await sync.retry();
+    expect(uploads, ['AAAAAAAA']);
+    expect(sync.pending, isEmpty);
+    expect(sync.lastError, isNull);
+    sync.dispose();
+    await network.close();
+  });
+
+  test('a replacement session waits for an in-flight local write', () async {
+    final store = DelayedWriteStore();
+    final network = StreamController<List<ConnectivityResult>>.broadcast();
+    final first = BleMeasurementSync(
+      uid: 'alice',
+      store: store,
+      upload: (_) async => throw StateError('offline'),
+      connectivityChanges: network.stream,
+    );
+    final enqueue = first.enqueue(scan('AAAAAAAA'));
+    await store.writeStarted.future;
+    first.dispose();
+
+    final second = BleMeasurementSync(
+      uid: 'alice',
+      store: store,
+      upload: (_) async => throw StateError('offline'),
+      connectivityChanges: network.stream,
+    );
+    final initialized = second.initialize();
+    store.allowWrite.complete();
+    await enqueue;
+    await initialized;
+    await second.enqueue(scan('BBBBBBBB'));
+
+    expect(
+      store.values['alice']!.map((measurement) => measurement.requestId),
+      containsAll(['AAAAAAAA', 'BBBBBBBB']),
+    );
+    second.dispose();
     await network.close();
   });
 }

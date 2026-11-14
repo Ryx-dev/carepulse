@@ -17,4 +17,6 @@ flutter analyze
 
 Firebase configuration currently supports Android and web. Realtime Database rules allow signed-in users to read their own history and write validated measurements under their own account.
 
+When the ESP32 is unavailable, sign in and select **Preview scan flow** on Home. The 15-second scan adds sample readings to Home and History for that app session. Use the top-right measurement menu to return to **Use live device**. Sample readings stay in memory and are never added to the Firebase upload queue.
+
 See [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) for phase status, [PHASE3_FIREBASE.md](PHASE3_FIREBASE.md) for the initial data proposal, and [PHASE5_ACCESS.md](PHASE5_ACCESS.md) for the tested owner-read rules candidate, local scan endpoints, and USB gateway. These are not deployed or connected to the UI. The ESP32 Serial firmware prototype is documented in [firmware/README.md](firmware/README.md).
